@@ -129,7 +129,7 @@ export function LiveBoard({ product, initial }: { product: string; initial: Live
         <div className="glass kpi"><div className="label">Faits admis · heure</div><div className="val">{nf(c.factsPerHour)}</div><div className="sub">tous signés et chaînés</div></div>
       </div>
 
-      <RelayPanel relay={snap.relay} product={product} now={now} paused={paused} />
+      <RelayPanel relay={snap.relay} product={product} now={now} />
 
       <div className="row">
         <section className="glass pad grow">

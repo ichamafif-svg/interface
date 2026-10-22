@@ -189,6 +189,31 @@ input.field, textarea.field, select.field { width: 100%; background: rgba(0, 0, 
 }
 
 /* Relais IA ↔ humain */
-@keyframes dash { to { stroke-dashoffset: -22; } }
-.dash { animation: dash 1.2s linear infinite; }
 .actor { width: 20px; height: 20px; border-radius: 6px; display: inline-flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 600; background: rgba(255, 255, 255, 0.05); border: 1px solid var(--line); }
+
+/* Carte holographique */
+.holo-frame { background: #02060a !important; border-color: rgba(103, 232, 249, 0.18) !important; box-shadow: 0 0 60px -20px rgba(34, 211, 238, 0.35), inset 0 0 80px rgba(34, 211, 238, 0.04) !important; }
+.holo-boot { color: #67e8f9; font-family: var(--mono); letter-spacing: 0.3em; font-size: 12px; opacity: 0.7; }
+.holo-label { transform: translateY(-4px); font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.06em; text-transform: uppercase; color: #a5f3fc; text-shadow: 0 0 8px rgba(34, 211, 238, 0.8); white-space: nowrap; text-align: center; transition: opacity 0.3s; }
+.holo-label span { display: block; padding: 1px 6px; border-left: 1px solid rgba(103, 232, 249, 0.6); background: rgba(2, 6, 10, 0.45); }
+.holo-label small { display: block; font-size: 9px; opacity: 0.6; margin-top: 1px; }
+.holo-label.warn { color: #fde68a; text-shadow: 0 0 8px rgba(251, 191, 36, 0.8); }
+.holo-label.warn span { border-color: rgba(251, 191, 36, 0.7); }
+.holo-label.bad { color: #fecaca; text-shadow: 0 0 8px rgba(248, 113, 113, 0.9); }
+.holo-label.bad span { border-color: rgba(248, 113, 113, 0.8); }
+.holo-label.sel span { background: rgba(103, 232, 249, 0.18); border-left-width: 2px; }
+.holo-tier { font-family: var(--mono); font-size: 9px; letter-spacing: 0.3em; color: rgba(103, 232, 249, 0.55); white-space: nowrap; }
+.holo-hud i { position: absolute; width: 22px; height: 22px; border-color: rgba(103, 232, 249, 0.6); border-style: solid; pointer-events: none; }
+.holo-hud i:nth-child(1) { top: 10px; left: 10px; border-width: 1px 0 0 1px; }
+.holo-hud i:nth-child(2) { top: 10px; right: 10px; border-width: 1px 1px 0 0; }
+.holo-hud i:nth-child(3) { bottom: 10px; left: 10px; border-width: 0 0 1px 1px; }
+.holo-hud i:nth-child(4) { bottom: 10px; right: 10px; border-width: 0 1px 1px 0; }
+.holo-scan { position: absolute; inset: 0; pointer-events: none; background: repeating-linear-gradient(0deg, rgba(103, 232, 249, 0.025) 0 1px, transparent 1px 3px), radial-gradient(ellipse at center, transparent 55%, rgba(0, 0, 0, 0.55)); }
+.holo-top, .holo-foot { position: absolute; left: 24px; right: 24px; display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; font-family: var(--mono); font-size: 10px; letter-spacing: 0.14em; color: rgba(165, 243, 252, 0.7); pointer-events: none; }
+.holo-top { top: 18px; }
+.holo-foot { bottom: 16px; justify-content: flex-start; letter-spacing: 0.06em; }
+.holo-legend { position: absolute; top: 40px; left: 24px; display: flex; gap: 12px; flex-wrap: wrap; font-family: var(--mono); font-size: 10px; color: rgba(165, 243, 252, 0.75); pointer-events: none; }
+.holo-legend b { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 5px; }
+.holo-readout { position: absolute; top: 72px; left: 24px; padding: 8px 12px; border-left: 2px solid #67e8f9; background: rgba(2, 6, 10, 0.7); font-family: var(--mono); font-size: 12px; color: #a5f3fc; text-transform: uppercase; pointer-events: none; }
+.holo-readout small { display: block; opacity: 0.7; font-size: 10px; margin-top: 2px; }
+.holo-feed { position: absolute; right: 24px; bottom: 40px; width: min(340px, 60%); font-family: var(--mono); font-size: 10.5px; text-align: right; display: flex; flex-direction: column; gap: 3px; pointer-events: none; text-shadow: 0 0 6px currentColor; }

@@ -25,7 +25,7 @@ export default async function MapPage({ params }: { params: Promise<{ product: s
       <PageHead
         kicker="Carte · ressources, composants, garanties"
         title="Ce qui tourne, ce qui est prouvé, ce qui est exposé"
-        intro="Trois plans : la plateforme Standard devant, le produit au milieu, ce qui est hors Standard derrière. Les impulsions sont les vrais événements du système."
+        intro="Trois plateaux : la plateforme Standard en bas, le produit au milieu, ce qui est hors Standard en haut. Les impulsions sont les vrais événements du système."
       />
       <TopologyView product={product} topology={t} />
 
