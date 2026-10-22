@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { api, unwrap } from "@/lib/api/server";
 import { PageHead, StateChip, SectionTitle } from "@/components/ui";
-import { TopologyView } from "@/components/topology-3d";
+import { TopologyView } from "@/components/topology-view";
 
 export const metadata = { title: "Carte" };
 
@@ -25,7 +25,7 @@ export default async function MapPage({ params }: { params: Promise<{ product: s
       <PageHead
         kicker="Carte · ressources, composants, garanties"
         title="Ce qui tourne, ce qui est prouvé, ce qui est exposé"
-        intro="Trois plateaux : la plateforme Standard en bas, le produit au milieu, ce qui est hors Standard en haut. Les impulsions sont les vrais événements du système."
+        intro="Le trajet du produit en couches, des entrées jusqu'aux tiers. Les signaux qui passent sont les vrais événements du système."
       />
       <TopologyView product={product} topology={t} />
 

@@ -27,7 +27,7 @@ Vide = faux backend. Les cookies de session du navigateur sont relayés tels que
 |---|---|---|
 | Run | `/[product]/run` | Vue d'ensemble : valeur, autonomie, garanties, composants |
 | | `/[product]/run/live` | **En direct** : relais IA ↔ humain, bacs, précontrôles, juges, release, sondes, flux SSE |
-| | `/[product]/run/map` | **Carte** 3D : ressources, composants, chemins, effet de chaque garantie, impulsions en direct |
+| | `/[product]/run/map` | **Carte** en couches (façon réseau de neurones) : ressources, composants, chemins, effet de chaque garantie, signaux en direct |
 | | `/[product]/run/traces/[trace]` | Pourquoi refusé ? : trajet de la requête, règle Cedar fautive |
 | À décider | `/[product]/decisions` | Décisions humaines signées (WebAuthn), décidé par l'IA |
 | Preuves | `/[product]/proofs/guarantees` | Garanties et chaîne de preuve |

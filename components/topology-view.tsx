@@ -1,23 +1,17 @@
 "use client";
 /**
- * Carte du produit : hologramme three.js (components/holo-map.tsx) + panneau garanties / nœud.
- * Les impulsions viennent du flux SSE réel (LiveEvent.edge / LiveEvent.node).
+ * Carte du produit : schéma en couches (components/neural-map.tsx) + panneau garanties / nœud.
+ * Les signaux viennent du flux SSE réel (LiveEvent.edge / LiveEvent.node).
  */
 import { useEffect, useMemo, useRef, useState } from "react";
-import dynamic from "next/dynamic";
 import Link from "next/link";
 import type { LiveEvent, State, Topology, TopologyNode } from "@/lib/api/types";
 import { StateChip, Chip } from "@/components/ui";
 import { refHref } from "@/lib/refs";
-import { HOLO, type HoloApi } from "@/components/holo-map";
+import { NeuralMap, NN_COLOR, type NeuralApi } from "@/components/neural-map";
 
-const HoloMap = dynamic(() => import("@/components/holo-map").then((m) => m.HoloMap), {
-  ssr: false,
-  loading: () => <div style={{ height: 620, display: "grid", placeItems: "center" }} className="holo-boot">INITIALISATION…</div>,
-});
-
-const STATE_COLOR = HOLO;
-const TONE_COLOR: Record<string, string> = { ok: "#67e8f9", info: "#93c5fd", warn: "#fbbf24", bad: "#f87171", agent: "#c4b5fd" };
+const STATE_COLOR = NN_COLOR;
+const TONE_COLOR: Record<string, string> = { ok: "#86efac", info: "#93c5fd", warn: "#fcd34d", bad: "#fca5a5", agent: "#c4b5fd" };
 const STATE_LABEL: Record<State, string> = { qualifie: "Qualifié", observe: "Observé", propose: "Proposé", inconnu: "Inconnu", non_couvert: "Non couvert", non_etaye: "Non étayé", hors_standard: "Hors Standard" };
 const MANAGED_LABEL: Record<TopologyNode["managed"], string> = { standard: "Plateforme Standard", product: "Code du produit", outside: "Hors Standard" };
 const SEV: Record<string, [string, string]> = { high: ["n", "Exposition forte"], medium: ["u", "Exposition moyenne"], low: ["o", "Exposition faible"] };
@@ -28,7 +22,7 @@ export function TopologyView({ product, topology }: { product: string; topology:
   const [simulate, setSimulate] = useState(false);
   const [hover, setHover] = useState<string | null>(null);
   const [feed, setFeed] = useState<LiveEvent[]>([]);
-  const holo = useRef<HoloApi | null>(null);
+  const net = useRef<NeuralApi | null>(null);
   const nodeById = useMemo(() => Object.fromEntries(topology.nodes.map((n) => [n.id, n])), [topology]);
   const effect = topology.guarantees.find((g) => g.guaranteeId === selG) ?? null;
 
@@ -50,7 +44,7 @@ export function TopologyView({ product, topology }: { product: string; topology:
       try {
         const e = JSON.parse(m.data) as LiveEvent;
         if (!e.edge && !e.node) return;
-        holo.current?.pulse({ edge: e.edge, node: e.node, color: TONE_COLOR[e.tone ?? "info"] ?? "#93c5fd" });
+        net.current?.pulse({ edge: e.edge, node: e.node, color: TONE_COLOR[e.tone ?? "info"] ?? "#93c5fd" });
         setFeed((f) => [e, ...f].slice(0, 5));
       } catch {
         /* ignoré */
@@ -68,33 +62,38 @@ export function TopologyView({ product, topology }: { product: string; topology:
 
   return (
     <div className="row">
-      <section className="glass grow holo-frame" style={{ padding: 0, overflow: "hidden", position: "relative" }}>
-        <HoloMap topology={topology} focus={focus} broken={simulate && !!effect} selected={selNode} onSelect={setSelNode} onHover={setHover} apiRef={holo} />
-        <div className="holo-hud" aria-hidden="true"><i /><i /><i /><i /></div>
-        <div className="holo-scan" aria-hidden="true" />
-        <div className="holo-top">
-          <span>STANDARD · CARTE · {topology.release.toUpperCase()}</span>
-          <span>{topology.nodes.length} RESSOURCES · {topology.edges.length} CHEMINS · {topology.guarantees.filter((g) => g.state === "qualifie").length}/{topology.guarantees.length} GARANTIES</span>
+      <section className="glass grow" style={{ padding: 0, overflow: "hidden", position: "relative" }}>
+        <div className="between" style={{ padding: "16px 20px 0" }}>
+          <div className="label">Release {topology.release} · {topology.nodes.length} ressources · {topology.edges.length} chemins · {topology.guarantees.filter((g) => g.state === "qualifie").length}/{topology.guarantees.length} garanties qualifiées</div>
+          <div className="flex small muted">
+            {(Object.keys(STATE_COLOR) as State[]).filter((st) => topology.nodes.some((n) => n.state === st)).map((st) => (
+              <span key={st} className="flex" style={{ gap: 5 }}><span style={{ width: 8, height: 8, borderRadius: "50%", background: STATE_COLOR[st] }} />{STATE_LABEL[st]}</span>
+            ))}
+          </div>
         </div>
-        <div className="holo-legend">
-          {(Object.keys(STATE_COLOR) as State[]).filter((st) => topology.nodes.some((n) => n.state === st)).map((st) => (
-            <span key={st}><b style={{ background: STATE_COLOR[st], boxShadow: `0 0 8px ${STATE_COLOR[st]}` }} />{STATE_LABEL[st]}</span>
-          ))}
+        <div className="tablewrap" style={{ padding: "6px 8px 0" }}>
+          <div style={{ minWidth: 760 }}>
+            <NeuralMap ref={net} topology={topology} focus={focus} broken={simulate && !!effect} selected={selNode} onSelect={setSelNode} onHover={setHover} />
+          </div>
         </div>
         {hovered && (
-          <div className="holo-readout">
-            <div>{hovered.label}</div>
-            <small>{MANAGED_LABEL[hovered.managed]} · {hovered.stateLabel ?? STATE_LABEL[hovered.state]}</small>
+          <div className="glass small" style={{ position: "absolute", top: 52, right: 20, padding: "8px 12px", borderRadius: 10, pointerEvents: "none" }}>
+            <div style={{ fontWeight: 500 }}>{hovered.label}</div>
+            <div className="muted">{MANAGED_LABEL[hovered.managed]} · {hovered.stateLabel ?? STATE_LABEL[hovered.state]}</div>
           </div>
         )}
-        <div className="holo-feed" aria-live="polite">
-          {feed.map((e, i) => (
-            <div key={e.id} style={{ opacity: 1 - i * 0.18, color: TONE_COLOR[e.tone ?? "info"] }}>▸ {e.summary}</div>
-          ))}
-        </div>
-        <div className="holo-foot">
-          {counts.map(([m, c]) => <span key={m}>{MANAGED_LABEL[m]} · {c}</span>)}
-          <span>Glisser pour tourner · molette pour zoomer · cliquer un nœud</span>
+        <div className="between small" style={{ padding: "4px 20px 16px", alignItems: "flex-end" }}>
+          <div className="flex muted" style={{ gap: 14 }}>
+            <span className="flex" style={{ gap: 6 }}><svg width="14" height="14" aria-hidden="true"><circle cx="7" cy="7" r="5" fill="none" stroke="#d4d4dc" /><circle cx="7" cy="7" r="6.5" fill="none" stroke="#d4d4dc" strokeOpacity=".4" /></svg>Plateforme Standard · {counts[0][1]}</span>
+            <span className="flex" style={{ gap: 6 }}><svg width="14" height="14" aria-hidden="true"><circle cx="7" cy="7" r="5" fill="none" stroke="#d4d4dc" /></svg>Produit · {counts[1][1]}</span>
+            <span className="flex" style={{ gap: 6 }}><svg width="14" height="14" aria-hidden="true"><circle cx="7" cy="7" r="5" fill="none" stroke="#d4d4dc" strokeDasharray="2 2" /></svg>Hors Standard · {counts[2][1]}</span>
+            <span>┄ contrôle</span><span className="c-bad">- - contournement</span>
+          </div>
+          <div aria-live="polite" style={{ textAlign: "right", minWidth: 260 }}>
+            {feed.slice(0, 3).map((e, i) => (
+              <div key={e.id} style={{ opacity: 1 - i * 0.3, color: TONE_COLOR[e.tone ?? "info"] }}>{e.summary}</div>
+            ))}
+          </div>
         </div>
       </section>
 
