@@ -36,6 +36,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/products/{product}/topology": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Carte du produit sur la release servie : ressources et composants (nœuds), chemins (arêtes)
+         *     et, pour chaque garantie, ce qu'elle protège et l'effet si elle tombe.
+         *     Les identifiants de nœuds et d'arêtes sont repris par `LiveEvent.node` / `LiveEvent.edge`.
+         *      */
+        get: operations["getTopology"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/products/{product}/live/snapshot": {
         parameters: {
             query?: never;
@@ -733,6 +753,7 @@ export interface components {
             series: (number | null)[];
         };
         LiveSnapshot: {
+            relay: components["schemas"]["Relay"];
             counters: {
                 activeSandboxes: number;
                 externalAgents: number;
@@ -786,6 +807,93 @@ export interface components {
             probes: components["schemas"]["ProbeStatus"][];
             events: components["schemas"]["LiveEvent"][];
         };
+        /** @description Relation IA ↔ humain. `waiting` = ce que l'agent attend d'un humain (ou l'inverse), `recent` = relais
+         *     bouclés récemment. `autonomous` = actions faites par l'agent seul, dans ses droits, sur la fenêtre.
+         *      */
+        Relay: {
+            windowHours: number;
+            waiting: components["schemas"]["Handoff"][];
+            recent: components["schemas"]["Handoff"][];
+            autonomous: {
+                count: number;
+                examples: string[];
+            };
+            humanGestures: number;
+            /** @description Délai médian de réponse humaine sur la fenêtre */
+            medianWaitSeconds: number | null;
+        };
+        Handoff: {
+            id: string;
+            /** @enum {string} */
+            direction: "agent_to_human" | "human_to_agent";
+            /** @enum {string} */
+            status: "waiting" | "done";
+            /** @enum {string} */
+            kind?: "question" | "decision" | "review" | "instruction" | "gesture";
+            title: string;
+            detail?: string;
+            /**
+             * Format: date-time
+             * @description Ouverture (waiting) ou bouclage (done)
+             */
+            at: string;
+            /** @description Qui a émis, ex. « Qwen · m-121 » ou « icham@lumen » */
+            by: string;
+            /** @description L'agent est arrêté tant que ce relais est ouvert */
+            blocking?: boolean;
+            /** @description Ce que le relais a débloqué (si done) */
+            unblocked?: string;
+            missionId?: string;
+            ref?: components["schemas"]["ObjectRef"];
+            journal?: components["schemas"]["JournalRef"];
+        };
+        Topology: {
+            release: string;
+            nodes: components["schemas"]["TopologyNode"][];
+            edges: components["schemas"]["TopologyEdge"][];
+            guarantees: components["schemas"]["GuaranteeEffect"][];
+        };
+        TopologyNode: {
+            id: string;
+            label: string;
+            /** @enum {string} */
+            kind: "external" | "entry" | "service" | "datastore" | "identity" | "secrets" | "egress" | "cdn" | "third_party" | "sandbox" | "kernel" | "client";
+            /**
+             * @description standard = plateforme Standard · product = code du produit sous Standard · outside = hors Standard
+             * @enum {string}
+             */
+            managed: "standard" | "product" | "outside";
+            state: components["schemas"]["State"];
+            stateLabel?: string;
+            detail?: string;
+            zoneId?: string;
+            /** @description Component.id si le nœud est un composant suivi */
+            componentId?: string;
+            metrics?: components["schemas"]["Metric"][];
+        };
+        TopologyEdge: {
+            id: string;
+            from: string;
+            to: string;
+            /** @enum {string} */
+            kind: "request" | "data" | "egress" | "control" | "bypass";
+            label?: string;
+            state: components["schemas"]["State"];
+            guaranteeIds?: string[];
+        };
+        GuaranteeEffect: {
+            guaranteeId: string;
+            title: string;
+            state: components["schemas"]["State"];
+            protects: {
+                nodes: string[];
+                edges: string[];
+            };
+            /** @description Ce qui est exposé si la garantie tombe */
+            ifBroken: string;
+            /** @enum {string} */
+            severity: "low" | "medium" | "high";
+        };
         ProbeStatus: {
             id: string;
             label: string;
@@ -800,7 +908,7 @@ export interface components {
             /** Format: date-time */
             at: string;
             /** @enum {string} */
-            type: "agent.step" | "agent.message" | "precheck.progress" | "judge.verdict" | "release.progress" | "probe.result" | "fact.admitted" | "refusal" | "plan.step";
+            type: "agent.step" | "agent.message" | "agent.question" | "human.gesture" | "precheck.progress" | "judge.verdict" | "release.progress" | "probe.result" | "fact.admitted" | "refusal" | "plan.step";
             actor: components["schemas"]["Actor"];
             /** @description Libellé court affiché (ex. « bac m-121 ») */
             tag: string;
@@ -809,6 +917,10 @@ export interface components {
             summary: string;
             ref?: components["schemas"]["ObjectRef"];
             journal?: components["schemas"]["JournalRef"];
+            /** @description Nœud de la topologie concerné (TopologyNode.id) */
+            node?: string;
+            /** @description Arête de la topologie parcourue (TopologyEdge.id) */
+            edge?: string;
             payload?: {
                 [key: string]: unknown;
             };
@@ -1407,6 +1519,29 @@ export interface operations {
                     "application/json": {
                         items: components["schemas"]["Component"][];
                     };
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    getTopology: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                product: components["parameters"]["product"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Topologie */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Topology"];
                 };
             };
             default: components["responses"]["Problem"];

@@ -4,6 +4,17 @@ import Link from "next/link";
 import type { LiveEvent, LiveSnapshot } from "@/lib/api/types";
 import { ago, clock, hhmmss, nf } from "@/lib/format";
 import { refHref } from "@/lib/refs";
+import { browserApi } from "@/lib/api/browser";
+import { RelayPanel } from "@/components/relay";
+
+const ACTOR: Record<string, [string, string, string]> = {
+  agent: ["IA", "var(--agent)", "Agent"],
+  human: ["H", "var(--info)", "Humain"],
+  kernel: ["K", "var(--ok)", "Noyau"],
+  probe: ["S", "var(--warn)", "Sonde"],
+  platform: ["P", "var(--muted)", "Plateforme"],
+  change: ["Δ", "var(--warn)", "Changement"],
+};
 
 const STEP_ICON: Record<string, [string, string | undefined]> = {
   done: ["✓", undefined],
@@ -64,6 +75,11 @@ export function LiveBoard({ product, initial }: { product: string; initial: Live
         const e = JSON.parse(msg.data) as LiveEvent;
         setEvents((prev) => [{ ...e, fresh: true }, ...prev.filter((x) => x.id !== e.id).map((x) => ({ ...x, fresh: false }))].slice(0, 40));
         setSnap((s) => apply(s, e));
+        if (e.type === "human.gesture" || e.type === "agent.question") {
+          browserApi.GET("/products/{product}/live/snapshot", { params: { path: { product } } }).then(({ data }) => {
+            if (data) setSnap((s) => ({ ...s, relay: data.relay }));
+          });
+        }
       } catch {
         /* événement illisible : ignoré, jamais inventé */
       }
@@ -71,7 +87,7 @@ export function LiveBoard({ product, initial }: { product: string; initial: Live
     es.onopen = () => setConn("open");
     es.onerror = () => setConn(es.readyState === EventSource.CLOSED ? "lost" : "connecting");
     es.onmessage = onEvent;
-    const types = ["agent.step", "agent.message", "precheck.progress", "judge.verdict", "release.progress", "probe.result", "fact.admitted", "refusal", "plan.step"];
+    const types = ["agent.step", "agent.message", "agent.question", "human.gesture", "precheck.progress", "judge.verdict", "release.progress", "probe.result", "fact.admitted", "refusal", "plan.step"];
     types.forEach((t) => es.addEventListener(t, onEvent as EventListener));
     return () => es.close();
   }, [product, paused]);
@@ -112,6 +128,8 @@ export function LiveBoard({ product, initial }: { product: string; initial: Live
         <div className="glass kpi"><div className="label">Sondes · 15 min</div><div className="val">{c.probes15m}</div><div className="sub">{c.probesConform} conformes{silent ? ` · ${silent} silencieuse` : ""}</div></div>
         <div className="glass kpi"><div className="label">Faits admis · heure</div><div className="val">{nf(c.factsPerHour)}</div><div className="sub">tous signés et chaînés</div></div>
       </div>
+
+      <RelayPanel relay={snap.relay} product={product} now={now} paused={paused} />
 
       <div className="row">
         <section className="glass pad grow">
@@ -230,6 +248,7 @@ export function LiveBoard({ product, initial }: { product: string; initial: Live
             const body = (
               <>
                 <span className="mono muted">{hhmmss(e.at)}</span>
+                <span className="actor" style={{ color: (ACTOR[e.actor] ?? ACTOR.platform)[1] }} title={(ACTOR[e.actor] ?? ACTOR.platform)[2]}>{(ACTOR[e.actor] ?? ACTOR.platform)[0]}</span>
                 <span className={`tag tone-${e.tone ?? "info"}`}>{e.tag}</span>
                 <span>{e.summary}{e.journal && <span className="mono muted"> · j#{e.journal.entry}</span>}</span>
               </>

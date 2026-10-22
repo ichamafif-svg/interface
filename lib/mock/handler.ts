@@ -5,6 +5,7 @@
 import * as F from "./fixtures";
 import type * as T from "@/lib/api/types";
 
+let seq = 100;
 type Params = Record<string, string>;
 type Ctx = { params: Params; query: URLSearchParams; body: unknown; signal?: AbortSignal };
 type Route = { method: string; pattern: RegExp; keys: string[]; run: (c: Ctx) => Response | Promise<Response> };
@@ -46,6 +47,8 @@ type Store = {
   missions: T.MissionDetail[];
   inventory: T.Inventory;
   failModes: T.FailMode[];
+  relay: T.Schemas["Relay"];
+  listeners: Set<(e: T.LiveEvent) => void>;
 };
 const g = globalThis as typeof globalThis & { __standardMock?: Store };
 const db: Store = (g.__standardMock ??= {
@@ -55,7 +58,30 @@ const db: Store = (g.__standardMock ??= {
   missions: structuredClone(F.missions),
   inventory: structuredClone(F.inventory),
   failModes: structuredClone(F.failModes),
+  relay: structuredClone(F.liveSnapshot.relay),
+  listeners: new Set(),
 });
+
+/** Événements réels (gestes faits dans la console) poussés dans tous les flux SSE ouverts. */
+function emit(e: Omit<T.LiveEvent, "id" | "at">, delayMs = 0) {
+  const fire = () => {
+    const ev: T.LiveEvent = { id: `x${++seq}`, at: new Date().toISOString(), ...e };
+    db.listeners.forEach((l) => l(ev));
+  };
+  if (delayMs) setTimeout(fire, delayMs);
+  else fire();
+}
+
+/** Boucle un relais IA ↔ humain : il passe de « attend » à « fait », avec ce qu'il a débloqué. */
+function closeHandoff(pred: (h: T.Schemas["Handoff"]) => boolean, by: string, unblocked: string, journal?: T.Schemas["JournalRef"]) {
+  const i = db.relay.waiting.findIndex(pred);
+  if (i < 0) return null;
+  const [h] = db.relay.waiting.splice(i, 1);
+  const done = { ...h, status: "done" as const, at: new Date().toISOString(), by, unblocked, ...(journal ? { journal } : {}) };
+  db.relay.recent.unshift(done);
+  db.relay.humanGestures += 1;
+  return done;
+}
 const hash = () => {
   const h = Math.random().toString(16).slice(2, 10).padEnd(8, "0");
   return `${h.slice(0, 4)}…${h.slice(4, 8)}`;
@@ -75,9 +101,10 @@ const product = (p: Params) => (p.product === F.PRODUCT ? null : notFound(`produ
 
 /* ---------- Run ---------- */
 on("GET", "/products/{product}/run/summary", ({ params }) => product(params) ?? json(F.runSummary));
+on("GET", "/products/{product}/topology", ({ params }) => product(params) ?? json(F.topology));
 on("GET", "/products/{product}/components", ({ params }) => product(params) ?? json({ items: F.components }));
 on("GET", "/products/{product}/live/snapshot", ({ params }) =>
-  product(params) ?? json(F.liveSnapshot),
+  product(params) ?? json({ ...F.liveSnapshot, relay: db.relay }),
 );
 on("GET", "/products/{product}/live/stream", ({ params, signal }) => product(params) ?? sse(F.liveScript, signal));
 on("GET", "/products/{product}/traces/{trace}", ({ params }) => {
@@ -103,7 +130,12 @@ on("POST", "/products/{product}/decisions/{decision}/resolve", ({ params, body }
   const optionId = (body as T.Schemas["DecisionResolution"]).optionId;
   if (!d.options.some((o) => o.id === optionId)) return problem(422, "Option inconnue", optionId);
   d.status = "resolved";
-  return json(receipt({ kind: "decision", id: d.id }), 202);
+  const label = d.options.find((o) => o.id === optionId)?.label ?? optionId;
+  const rec = receipt({ kind: "decision", id: d.id });
+  const h = closeHandoff((x) => x.ref?.kind === "decision" && x.ref.id === d.id, "vous", `« ${label} » signé · l'agent reprend`, rec.journal);
+  emit({ type: "human.gesture", actor: "human", tag: "vous", tone: "info", summary: `Signé : « ${label} » · ${d.title}`, ref: { kind: "decision", id: d.id }, journal: rec.journal, node: "kernel" });
+  emit({ type: "agent.step", actor: "agent", tag: "agent", tone: "agent", summary: h?.blocking ? `Débloqué par votre décision : reprise de « ${d.title} »` : `Décision intégrée : ${label}`, ref: { kind: "decision", id: d.id }, node: "sandbox" }, 2500);
+  return json(rec, 202);
 });
 
 /* ---------- Preuves ---------- */
@@ -229,6 +261,9 @@ on("POST", "/products/{product}/missions/{mission}/messages", ({ params, body })
       ? `Compris : « ${msg.text} ». Je m'en occupe dans le bac ; l'avancement apparaît dans le plan et dans En direct.`
       : "Noté. Je l'intègre à la mission et je reviens vers vous si une décision métier en découle.",
   });
+  const done = closeHandoff((h) => h.missionId === m.id && h.direction === "agent_to_human", "vous", `« ${msg.text} » · ${m.id} reprend dans son bac`);
+  emit({ type: "human.gesture", actor: "human", tag: "vous → " + m.id, tone: "info", summary: `Réponse à l'agent : « ${msg.text} »`, ref: { kind: "mission", id: m.id }, node: "sandbox" });
+  if (done) emit({ type: "agent.step", actor: "agent", tag: "bac " + m.id, tone: "agent", summary: "Reprise : application de votre choix", ref: { kind: "mission", id: m.id }, node: "sandbox" }, 2500);
   if (req.actionId && m.status === "awaiting_decision") {
     m.status = "running";
     const rel = m.plan.find((s) => s.key === "release");
@@ -304,11 +339,11 @@ on("POST", "/auth/gesture-challenge", ({ body }) => {
 });
 
 /* ---------- SSE ---------- */
-let seq = 100;
 function sse(script: Omit<T.LiveEvent, "id" | "at">[], signal?: AbortSignal): Response {
   const enc = new TextEncoder();
   let timer: ReturnType<typeof setInterval> | undefined;
   let i = 0;
+  let unsubscribe = () => {};
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
       const send = () => {
@@ -319,10 +354,20 @@ function sse(script: Omit<T.LiveEvent, "id" | "at">[], signal?: AbortSignal): Re
           clearInterval(timer);
         }
       };
+      const push = (ev: T.LiveEvent) => {
+        try {
+          controller.enqueue(enc.encode(`id: ${ev.id}\nevent: ${ev.type}\ndata: ${JSON.stringify(ev)}\n\n`));
+        } catch {
+          db.listeners.delete(push);
+        }
+      };
+      unsubscribe = () => db.listeners.delete(push);
+      db.listeners.add(push);
       controller.enqueue(enc.encode(": flux Standard (démo)\nretry: 3000\n\n"));
       timer = setInterval(send, 2600);
       signal?.addEventListener("abort", () => {
         clearInterval(timer);
+        unsubscribe();
         try {
           controller.close();
         } catch {}
@@ -330,6 +375,7 @@ function sse(script: Omit<T.LiveEvent, "id" | "at">[], signal?: AbortSignal): Re
     },
     cancel() {
       clearInterval(timer);
+      unsubscribe();
     },
   });
   return new Response(stream, {

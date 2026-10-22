@@ -92,6 +92,7 @@ export async function exercise({ call, validator, product = "lumen", writes = tr
 
   await get(`${p}/run/summary`);
   await get(`${p}/components`);
+  await get(`${p}/topology`);
   await get(`${p}/live/snapshot`);
   await get(`${p}/live/stream`);
   const refusals = await get(`${p}/refusals?windowHours=24`);

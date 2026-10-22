@@ -79,19 +79,37 @@ export const components: T.Component[] = [
 ];
 
 const events: T.LiveEvent[] = [
-  { id: "e10", at: D("22T01:42:18"), type: "probe.result", actor: "probe", tag: "sonde", tone: "ok", summary: "Entrée internet conforme · r-212", ref: { kind: "guarantee", id: "g-ingress" } },
-  { id: "e9", at: D("22T01:42:11"), type: "agent.step", actor: "agent", tag: "bac m-121", tone: "agent", summary: "Écriture de api/invites.py", ref: { kind: "mission", id: "m-121" } },
-  { id: "e8", at: D("22T01:42:05"), type: "precheck.progress", actor: "platform", tag: "précontrôle", tone: "info", summary: "m-122 · tests 34/52", ref: { kind: "candidate", id: "c-493" } },
-  { id: "e7", at: D("22T01:41:58"), type: "judge.verdict", actor: "kernel", tag: "juge 2", tone: "info", summary: "Rejeu de c-490 en cours", ref: { kind: "candidate", id: "c-490" } },
-  { id: "e6", at: D("22T01:41:52"), type: "judge.verdict", actor: "kernel", tag: "juge 1", tone: "ok", summary: "c-490 conforme à la loi v14", ref: { kind: "candidate", id: "c-490" }, journal: { entry: 18352, hash: "2b81…c09e" } },
-  { id: "e5", at: D("22T01:41:40"), type: "refusal", actor: "platform", tag: "bac m-119", tone: "bad", summary: "Sortie pypi.org refusée → leçon", ref: { kind: "trace", id: "t-pypi" } },
-  { id: "e4", at: D("22T01:41:33"), type: "probe.result", actor: "probe", tag: "sonde", tone: "ok", summary: "Intégrité de la configuration conforme" },
-  { id: "e3", at: D("22T01:41:20"), type: "release.progress", actor: "platform", tag: "release", tone: "info", summary: "r-213 en canary à 10 %", ref: { kind: "release", id: "r-213" } },
-  { id: "e2", at: D("22T01:41:02"), type: "fact.admitted", actor: "kernel", tag: "fait", tone: "ok", summary: "j#18351 · 61e requête refusée", journal: { entry: 18351, hash: "9c40…7aa1" } },
-  { id: "e1", at: D("22T01:40:47"), type: "probe.result", actor: "probe", tag: "sonde CDN", tone: "warn", summary: "Aucune réponse depuis 6 h", ref: { kind: "gap", id: "gap-cdn" } },
+  { id: "e10", at: D("22T01:42:18"), type: "probe.result", actor: "probe", tag: "sonde", tone: "ok", summary: "Entrée internet conforme · r-212", edge: "e-probes-envoy", ref: { kind: "guarantee", id: "g-ingress" } },
+  { id: "e9", at: D("22T01:42:11"), type: "agent.step", actor: "agent", tag: "bac m-121", tone: "agent", summary: "Écriture de api/invites.py", node: "sandbox", ref: { kind: "mission", id: "m-121" } },
+  { id: "e8", at: D("22T01:42:05"), type: "precheck.progress", actor: "platform", tag: "précontrôle", tone: "info", summary: "m-122 · tests 34/52", node: "sandbox", ref: { kind: "candidate", id: "c-493" } },
+  { id: "e7", at: D("22T01:41:58"), type: "judge.verdict", actor: "kernel", tag: "juge 2", tone: "info", summary: "Rejeu de c-490 en cours", node: "kernel", ref: { kind: "candidate", id: "c-490" } },
+  { id: "e6", at: D("22T01:41:52"), type: "judge.verdict", actor: "kernel", tag: "juge 1", tone: "ok", summary: "c-490 conforme à la loi v14", node: "kernel", ref: { kind: "candidate", id: "c-490" }, journal: { entry: 18352, hash: "2b81…c09e" } },
+  { id: "e5", at: D("22T01:41:40"), type: "refusal", actor: "platform", tag: "bac m-119", tone: "bad", summary: "Sortie pypi.org refusée → leçon", node: "sandbox", ref: { kind: "trace", id: "t-pypi" } },
+  { id: "e4", at: D("22T01:41:33"), type: "probe.result", actor: "probe", tag: "sonde", tone: "ok", summary: "Intégrité de la configuration conforme", node: "envoy" },
+  { id: "e3", at: D("22T01:41:20"), type: "release.progress", actor: "platform", tag: "release", tone: "info", summary: "r-213 en canary à 10 %", edge: "e-kernel-api", ref: { kind: "release", id: "r-213" } },
+  { id: "e2", at: D("22T01:41:02"), type: "fact.admitted", actor: "kernel", tag: "fait", tone: "ok", summary: "j#18351 · 61e requête refusée", edge: "e-envoy-api", journal: { entry: 18351, hash: "9c40…7aa1" } },
+  { id: "e1", at: D("22T01:40:47"), type: "probe.result", actor: "probe", tag: "sonde CDN", tone: "warn", summary: "Aucune réponse depuis 6 h", edge: "e-probes-cdn", ref: { kind: "gap", id: "gap-cdn" } },
 ];
 
 export const liveSnapshot: T.LiveSnapshot = {
+  relay: {
+    windowHours: 24,
+    waiting: [
+      { id: "h-m121", direction: "agent_to_human", status: "waiting", kind: "question", title: "Livrer derrière un drapeau, ou attendre le claim tenant ?", detail: "12 scénarios sur 13 passent ; l'inter-tenant reste non couvert.", at: D("22T01:39"), by: "Qwen · m-121", blocking: true, missionId: "m-121", ref: { kind: "mission", id: "m-121" } },
+      { id: "h-law", direction: "agent_to_human", status: "waiting", kind: "decision", title: "Signer la loi v14 : sortie vers api.mux.com", detail: "Demandée pour la zone Diffusion audio.", at: D("21T16:05"), by: "Agent · Diffusion audio", blocking: true, ref: { kind: "decision", id: "d-law-v14" } },
+      { id: "h-collab", direction: "agent_to_human", status: "waiting", kind: "decision", title: "Les membres peuvent-ils inviter d'autres membres ?", detail: "Recommandation : propriétaire seul (usage observé).", at: D("21T22:12"), by: "Agent · découverte Playlists", blocking: false, ref: { kind: "decision", id: "d-collab-invite" } },
+      { id: "h-fuzz", direction: "human_to_agent", status: "waiting", kind: "instruction", title: "Corriger les 2 erreurs 500 trouvées par le fuzzing", detail: "Renvoyé par la vérification : valider la longueur, renvoyer 422.", at: D("22T01:12"), by: "Vérification · zone Playlists", missionId: "m-117", ref: { kind: "mission", id: "m-117" } },
+    ],
+    recent: [
+      { id: "r-access", direction: "human_to_agent", status: "done", kind: "gesture", title: "Accès d'urgence accordé par la règle R-3", at: D("22T01:28"), by: "Règle R-3 · pré-signée par icham@lumen", unblocked: "ops@lumen · 15 min sur data-2, personne réveillé", ref: { kind: "decision", id: "d-access-1" }, journal: { entry: 18339, hash: "4b70…a9d2" } },
+      { id: "r-owner", direction: "agent_to_human", status: "done", kind: "question", title: "Un membre invité par lien peut-il inviter à son tour ?", at: D("22T01:23"), by: "icham@lumen", unblocked: "Réponse signée dans la politique · m-121 a codé et testé", missionId: "m-121", ref: { kind: "mission", id: "m-121" } },
+      { id: "r-start", direction: "human_to_agent", status: "done", kind: "instruction", title: "Ajoute des invitations par lien aux playlists collaboratives", at: D("22T01:20"), by: "icham@lumen", unblocked: "Mission m-121 ouverte dans un bac", missionId: "m-121", ref: { kind: "mission", id: "m-121" } },
+      { id: "r-members", direction: "agent_to_human", status: "done", kind: "decision", title: "Les membres peuvent modifier une playlist collaborative", at: D("21T03:40"), by: "icham@lumen", unblocked: "Politique Playlists v4 · candidat c-487 admis", journal: { entry: 18264, hash: "c3a9…5e60" } },
+    ],
+    autonomous: { count: 9, examples: ["CVE-2026-4127 corrigée, envoyée au précontrôle", "Télémétrie vers api.segment.io retirée après refus", "Extracteur register_admin() admis", "Retrait de middleware/ratelimit.py en jugement"] },
+    humanGestures: 3,
+    medianWaitSeconds: 1260,
+  },
   counters: { activeSandboxes: 3, externalAgents: 1, prechecks: 1, judgements: 1, probes15m: 46, probesConform: 45, factsPerHour: 212 },
   missions: [
     { id: "m-121", title: "Invitations par lien", badge: "Qwen", steps: [ { label: "politique proposée", status: "done" }, { label: "écrit api/invites.py", status: "running" }, { label: "tests", status: "pending" } ] },
@@ -129,16 +147,19 @@ export const liveSnapshot: T.LiveSnapshot = {
 
 /** Scénario rejoué en boucle par le flux SSE du faux backend. */
 export const liveScript: Omit<T.LiveEvent, "id" | "at">[] = [
-  { type: "precheck.progress", actor: "platform", tag: "précontrôle", tone: "info", summary: "m-122 · tests 41/52", ref: { kind: "candidate", id: "c-493" } },
-  { type: "probe.result", actor: "probe", tag: "sonde", tone: "ok", summary: "Sorties interdites refusées · 3/3" },
-  { type: "agent.step", actor: "agent", tag: "bac m-121", tone: "agent", summary: "Tests de refus ajoutés (lien expiré, autre tenant)", ref: { kind: "mission", id: "m-121" } },
-  { type: "judge.verdict", actor: "kernel", tag: "juge 2", tone: "ok", summary: "c-490 conforme · rejeu identique", ref: { kind: "candidate", id: "c-490" } },
-  { type: "precheck.progress", actor: "platform", tag: "précontrôle", tone: "ok", summary: "m-122 · 52/52 · précontrôle passé en 1 min 38 s", ref: { kind: "candidate", id: "c-493" } },
-  { type: "fact.admitted", actor: "kernel", tag: "fait", tone: "ok", summary: "Débit : 61e requête refusée sur r-212" },
-  { type: "refusal", actor: "platform", tag: "politique", tone: "bad", summary: "PUT /playlists/p_4410 refusé · membre retiré", ref: { kind: "trace", id: "t-8f2c1a" } },
-  { type: "release.progress", actor: "platform", tag: "release", tone: "info", summary: "r-213 en canary à 25 %", ref: { kind: "release", id: "r-213" } },
-  { type: "probe.result", actor: "probe", tag: "sonde", tone: "ok", summary: "Entrée internet conforme · r-213" },
-  { type: "probe.result", actor: "probe", tag: "sonde CDN", tone: "warn", summary: "Toujours silencieuse" },
+  { type: "precheck.progress", actor: "platform", tag: "précontrôle", tone: "info", summary: "m-122 · tests 41/52", node: "sandbox", ref: { kind: "candidate", id: "c-493" } },
+  { type: "probe.result", actor: "probe", tag: "sonde", tone: "ok", summary: "Sorties interdites refusées · 3/3", edge: "e-egress-segment" },
+  { type: "agent.step", actor: "agent", tag: "bac m-121", tone: "agent", summary: "Tests de refus ajoutés (lien expiré, autre tenant)", node: "sandbox", ref: { kind: "mission", id: "m-121" } },
+  { type: "judge.verdict", actor: "kernel", tag: "juge 2", tone: "ok", summary: "c-490 conforme · rejeu identique", node: "kernel", ref: { kind: "candidate", id: "c-490" } },
+  { type: "precheck.progress", actor: "platform", tag: "précontrôle", tone: "ok", summary: "m-122 · 52/52 · précontrôle passé en 1 min 38 s", edge: "e-sandbox-kernel", ref: { kind: "candidate", id: "c-493" } },
+  { type: "fact.admitted", actor: "kernel", tag: "fait", tone: "ok", summary: "Débit : 61e requête refusée sur r-212", edge: "e-users-envoy" },
+  { type: "refusal", actor: "platform", tag: "politique", tone: "bad", summary: "PUT /playlists/p_4410 refusé · membre retiré", edge: "e-api-cedar", ref: { kind: "trace", id: "t-8f2c1a" } },
+  { type: "release.progress", actor: "platform", tag: "release", tone: "info", summary: "r-213 en canary à 25 %", edge: "e-kernel-api", ref: { kind: "release", id: "r-213" } },
+  { type: "probe.result", actor: "probe", tag: "sonde", tone: "ok", summary: "Entrée internet conforme · r-213", edge: "e-probes-envoy" },
+  { type: "probe.result", actor: "probe", tag: "sonde CDN", tone: "warn", summary: "Toujours silencieuse", edge: "e-probes-cdn" },
+  { type: "agent.question", actor: "agent", tag: "m-121 → vous", tone: "warn", summary: "Toujours en attente : livrer derrière un drapeau ou attendre le claim tenant ?", ref: { kind: "mission", id: "m-121" }, node: "sandbox" },
+  { type: "agent.step", actor: "agent", tag: "bac m-117", tone: "agent", summary: "Correctif des 500 du fuzzing : validation de longueur, 422", ref: { kind: "mission", id: "m-117" }, node: "sandbox" },
+  { type: "human.gesture", actor: "human", tag: "ops@lumen", tone: "info", summary: "Accès R-3 revu : session data-2 close, aucune modification hors release", ref: { kind: "decision", id: "d-access-1" }, node: "kernel" },
 ];
 
 export const traces: Record<string, T.Trace> = {
@@ -769,3 +790,64 @@ export const failModes: T.FailMode[] = [
   { route: "PUT /playlists/{id}", mode: "closed" },
   { route: "GET /playlists/{id}", mode: "open" },
 ];
+
+/* ---------- Topologie (release r-212) ---------- */
+type N = T.Schemas["TopologyNode"];
+type Ed = T.Schemas["TopologyEdge"];
+const n = (id: string, label: string, kind: N["kind"], managed: N["managed"], state: T.State, extra: Partial<N> = {}): N => ({ id, label, kind, managed, state, ...extra });
+const e = (id: string, from: string, to: string, kind: Ed["kind"], state: T.State, guaranteeIds: string[] = [], label?: string): Ed => ({ id, from, to, kind, state, guaranteeIds, ...(label ? { label } : {}) });
+
+export const topology: T.Schemas["Topology"] = {
+  release: "r-212",
+  nodes: [
+    n("users", "Utilisateurs · web", "client", "outside", "hors_standard", { detail: "Navigateurs, 2,4 M requêtes / 7 j" }),
+    n("mobile", "App mobile v4.2", "client", "outside", "hors_standard", { detail: "Non gérée par Standard" }),
+    n("probes", "Sondes · 3 points", "external", "standard", "qualifie", { detail: "Internet eu-west, VPC app, VPC data" }),
+    n("envoy", "Entrée · Envoy", "entry", "standard", "qualifie", { detail: "Session, budget, corps, politique", metrics: [{ key: "rps", label: "Débit", value: 1800, unit: "req/s", display: "1,8k" }] }),
+    n("admin", "admin.lumen.internal", "service", "product", "non_couvert", { detail: "Joignable sans passer par l'entrée", zoneId: "playlists" }),
+    n("api", "API · api.lumen.fm", "service", "product", "qualifie", { componentId: "api", zoneId: "playlists", metrics: [{ key: "p95", label: "p95", value: 212, unit: "ms" }] }),
+    n("worker", "Worker import", "service", "product", "observe", { detail: "File d'import des playlists" }),
+    n("cedar", "Politique Cedar", "kernel", "standard", "qualifie", { detail: "policies/playlists.cedar v4 · observation", zoneId: "playlists" }),
+    n("keycloak", "Keycloak · realm lumen", "identity", "standard", "inconnu", { stateLabel: "Claim tenant absent", detail: "Le jeton ne porte pas le tenant" }),
+    n("pg", "Postgres principal", "datastore", "product", "non_couvert", { componentId: "postgres", stateLabel: "Isolation non couverte", metrics: [{ key: "qps", label: "Requêtes", value: 6200, unit: "/s", display: "6,2k" }] }),
+    n("s3", "s3://lumen-exports", "datastore", "product", "observe"),
+    n("openbao", "OpenBao", "secrets", "standard", "propose", { stateLabel: "Rotation à définir", detail: "STRIPE_KEY encore dans billing/settings.py" }),
+    n("egress", "Proxy de sortie", "egress", "standard", "qualifie", { detail: "4 destinations admises" }),
+    n("stripe", "api.stripe.com", "third_party", "outside", "observe", { detail: "Sortie paiement surveillée" }),
+    n("segment", "api.segment.io", "third_party", "outside", "hors_standard", { stateLabel: "Refusé", detail: "Destination hors loi, refusée" }),
+    n("cdn", "CDN audio", "cdn", "outside", "inconnu", { componentId: "cdn", stateLabel: "Sonde silencieuse · 6 h" }),
+    n("sandbox", "Bacs de l'agent", "sandbox", "standard", "qualifie", { detail: "3 actifs · sans réseau direct, sans secret" }),
+    n("kernel", "Noyau · 2 juges · journal", "kernel", "standard", "qualifie", { detail: "Admission, releases, journal chaîné" }),
+  ],
+  edges: [
+    e("e-users-envoy", "users", "envoy", "request", "qualifie", ["g-rate", "g-ingress"]),
+    e("e-mobile-envoy", "mobile", "envoy", "request", "observe", ["g-ingress"]),
+    e("e-users-admin", "users", "admin", "bypass", "non_couvert", ["g-ingress"], "contourne l'entrée"),
+    e("e-users-cdn", "users", "cdn", "request", "inconnu", ["g-playback"], "lecture audio"),
+    e("e-probes-envoy", "probes", "envoy", "request", "qualifie", ["g-ingress", "g-rate"]),
+    e("e-probes-cdn", "probes", "cdn", "request", "inconnu", ["g-playback"], "silencieuse"),
+    e("e-envoy-keycloak", "envoy", "keycloak", "control", "inconnu", ["g-tenant"], "session OIDC"),
+    e("e-envoy-api", "envoy", "api", "request", "qualifie", ["g-rate", "g-latency"]),
+    e("e-api-cedar", "api", "cedar", "control", "qualifie", [], "décisions"),
+    e("e-api-pg", "api", "pg", "data", "non_couvert", ["g-tenant", "g-latency"]),
+    e("e-admin-pg", "admin", "pg", "data", "non_couvert", ["g-ingress"]),
+    e("e-worker-pg", "worker", "pg", "data", "observe"),
+    e("e-api-s3", "api", "s3", "data", "observe", ["g-restore"]),
+    e("e-api-openbao", "api", "openbao", "control", "propose"),
+    e("e-api-egress", "api", "egress", "egress", "qualifie", ["g-egress"]),
+    e("e-egress-stripe", "egress", "stripe", "egress", "observe", ["g-egress"]),
+    e("e-egress-segment", "egress", "segment", "egress", "qualifie", ["g-egress"], "refusée"),
+    e("e-sandbox-kernel", "sandbox", "kernel", "control", "qualifie", [], "candidats"),
+    e("e-kernel-api", "kernel", "api", "control", "qualifie", [], "releases"),
+    e("e-kernel-cedar", "kernel", "cedar", "control", "qualifie", [], "loi signée"),
+  ],
+  guarantees: [
+    { guaranteeId: "g-egress", title: "Sorties limitées à 4 destinations", state: "qualifie", protects: { nodes: ["egress"], edges: ["e-api-egress", "e-egress-stripe", "e-egress-segment"] }, ifBroken: "Les données peuvent partir vers n'importe quelle destination : exfiltration, télémétrie non déclarée.", severity: "high" },
+    { guaranteeId: "g-rate", title: "Excès d'appels refusés à l'entrée", state: "qualifie", protects: { nodes: ["envoy", "api"], edges: ["e-users-envoy", "e-envoy-api"] }, ifBroken: "Un seul client peut saturer l'API : dégradation pour tous, coûts d'infrastructure.", severity: "medium" },
+    { guaranteeId: "g-latency", title: "p95 de PUT /playlists < 250 ms à 400 req/s", state: "observe", protects: { nodes: ["api", "pg"], edges: ["e-envoy-api", "e-api-pg"] }, ifBroken: "Modifications de playlist lentes, abandons côté utilisateur.", severity: "low" },
+    { guaranteeId: "g-playback", title: "Démarrage de lecture audio < 1,5 s", state: "inconnu", protects: { nodes: ["cdn"], edges: ["e-users-cdn", "e-probes-cdn"] }, ifBroken: "Lecture lente ou impossible : le cœur du produit.", severity: "high" },
+    { guaranteeId: "g-tenant", title: "Refus inter-tenant sur les playlists", state: "non_couvert", protects: { nodes: ["pg", "keycloak"], edges: ["e-api-pg", "e-envoy-keycloak"] }, ifBroken: "Un client peut lire les playlists d'un autre : fuite de données personnelles.", severity: "high" },
+    { guaranteeId: "g-ingress", title: "Aucun contournement de l'entrée", state: "non_couvert", protects: { nodes: ["envoy", "admin"], edges: ["e-users-envoy", "e-mobile-envoy", "e-users-admin", "e-admin-pg"] }, ifBroken: "Session, budget et politique sont contournables par admin.lumen.internal.", severity: "high" },
+    { guaranteeId: "g-restore", title: "Restauration Postgres < 30 min", state: "propose", protects: { nodes: ["pg", "s3"], edges: ["e-api-s3"] }, ifBroken: "Perte de données sans délai de reprise connu.", severity: "high" },
+  ],
+};

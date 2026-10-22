@@ -53,6 +53,23 @@ paths:
                   items: { type: array, items: { $ref: '#/components/schemas/Component' } }
         default: { $ref: '#/components/responses/Problem' }
 
+  /products/{product}/topology:
+    get:
+      tags: [run]
+      operationId: getTopology
+      description: |
+        Carte du produit sur la release servie : ressources et composants (nœuds), chemins (arêtes)
+        et, pour chaque garantie, ce qu'elle protège et l'effet si elle tombe.
+        Les identifiants de nœuds et d'arêtes sont repris par `LiveEvent.node` / `LiveEvent.edge`.
+      parameters: [{ $ref: '#/components/parameters/product' }]
+      responses:
+        '200':
+          description: Topologie
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Topology' }
+        default: { $ref: '#/components/responses/Problem' }
+
   /products/{product}/live/snapshot:
     get:
       tags: [run]
@@ -881,8 +898,9 @@ components:
 
     LiveSnapshot:
       type: object
-      required: [counters, missions, prechecks, judgements, release, probes, events]
+      required: [counters, relay, missions, prechecks, judgements, release, probes, events]
       properties:
+        relay: { $ref: '#/components/schemas/Relay' }
         counters:
           type: object
           required: [activeSandboxes, externalAgents, prechecks, judgements, probes15m, probesConform, factsPerHour]
@@ -964,6 +982,98 @@ components:
           type: array
           items: { $ref: '#/components/schemas/LiveEvent' }
 
+    Relay:
+      type: object
+      description: |
+        Relation IA ↔ humain. `waiting` = ce que l'agent attend d'un humain (ou l'inverse), `recent` = relais
+        bouclés récemment. `autonomous` = actions faites par l'agent seul, dans ses droits, sur la fenêtre.
+      required: [windowHours, waiting, recent, autonomous, humanGestures, medianWaitSeconds]
+      properties:
+        windowHours: { type: integer }
+        waiting: { type: array, items: { $ref: '#/components/schemas/Handoff' } }
+        recent: { type: array, items: { $ref: '#/components/schemas/Handoff' } }
+        autonomous:
+          type: object
+          required: [count, examples]
+          properties:
+            count: { type: integer }
+            examples: { type: array, items: { type: string } }
+        humanGestures: { type: integer }
+        medianWaitSeconds: { type: [integer, 'null'], description: Délai médian de réponse humaine sur la fenêtre }
+
+    Handoff:
+      type: object
+      required: [id, direction, status, title, at, by]
+      properties:
+        id: { type: string }
+        direction: { type: string, enum: [agent_to_human, human_to_agent] }
+        status: { type: string, enum: [waiting, done] }
+        kind: { type: string, enum: [question, decision, review, instruction, gesture] }
+        title: { type: string }
+        detail: { type: string }
+        at: { type: string, format: date-time, description: Ouverture (waiting) ou bouclage (done) }
+        by: { type: string, description: "Qui a émis, ex. « Qwen · m-121 » ou « icham@lumen »" }
+        blocking: { type: boolean, description: L'agent est arrêté tant que ce relais est ouvert }
+        unblocked: { type: string, description: Ce que le relais a débloqué (si done) }
+        missionId: { type: string }
+        ref: { $ref: '#/components/schemas/ObjectRef' }
+        journal: { $ref: '#/components/schemas/JournalRef' }
+
+    Topology:
+      type: object
+      required: [release, nodes, edges, guarantees]
+      properties:
+        release: { type: string }
+        nodes: { type: array, items: { $ref: '#/components/schemas/TopologyNode' } }
+        edges: { type: array, items: { $ref: '#/components/schemas/TopologyEdge' } }
+        guarantees: { type: array, items: { $ref: '#/components/schemas/GuaranteeEffect' } }
+
+    TopologyNode:
+      type: object
+      required: [id, label, kind, managed, state]
+      properties:
+        id: { type: string }
+        label: { type: string }
+        kind: { type: string, enum: [external, entry, service, datastore, identity, secrets, egress, cdn, third_party, sandbox, kernel, client] }
+        managed:
+          type: string
+          enum: [standard, product, outside]
+          description: standard = plateforme Standard · product = code du produit sous Standard · outside = hors Standard
+        state: { $ref: '#/components/schemas/State' }
+        stateLabel: { type: string }
+        detail: { type: string }
+        zoneId: { type: string }
+        componentId: { type: string, description: Component.id si le nœud est un composant suivi }
+        metrics: { type: array, items: { $ref: '#/components/schemas/Metric' } }
+
+    TopologyEdge:
+      type: object
+      required: [id, from, to, kind, state]
+      properties:
+        id: { type: string }
+        from: { type: string }
+        to: { type: string }
+        kind: { type: string, enum: [request, data, egress, control, bypass] }
+        label: { type: string }
+        state: { $ref: '#/components/schemas/State' }
+        guaranteeIds: { type: array, items: { type: string } }
+
+    GuaranteeEffect:
+      type: object
+      required: [guaranteeId, title, state, protects, ifBroken, severity]
+      properties:
+        guaranteeId: { type: string }
+        title: { type: string }
+        state: { $ref: '#/components/schemas/State' }
+        protects:
+          type: object
+          required: [nodes, edges]
+          properties:
+            nodes: { type: array, items: { type: string } }
+            edges: { type: array, items: { type: string } }
+        ifBroken: { type: string, description: Ce qui est exposé si la garantie tombe }
+        severity: { type: string, enum: [low, medium, high] }
+
     ProbeStatus:
       type: object
       required: [id, label, status, lastAt]
@@ -982,13 +1092,15 @@ components:
         at: { type: string, format: date-time }
         type:
           type: string
-          enum: [agent.step, agent.message, precheck.progress, judge.verdict, release.progress, probe.result, fact.admitted, refusal, plan.step]
+          enum: [agent.step, agent.message, agent.question, human.gesture, precheck.progress, judge.verdict, release.progress, probe.result, fact.admitted, refusal, plan.step]
         actor: { $ref: '#/components/schemas/Actor' }
         tag: { type: string, description: Libellé court affiché (ex. « bac m-121 ») }
         tone: { type: string, enum: [ok, info, warn, bad, agent] }
         summary: { type: string }
         ref: { $ref: '#/components/schemas/ObjectRef' }
         journal: { $ref: '#/components/schemas/JournalRef' }
+        node: { type: string, description: Nœud de la topologie concerné (TopologyNode.id) }
+        edge: { type: string, description: Arête de la topologie parcourue (TopologyEdge.id) }
         payload: { type: object, additionalProperties: true }
 
     Trace:

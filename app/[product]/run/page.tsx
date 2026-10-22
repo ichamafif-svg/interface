@@ -36,12 +36,16 @@ export default async function RunPage({ params }: { params: Promise<{ product: s
   const { product } = await params;
   const c = api();
   const path = { params: { path: { product } } };
-  const [s, comps, tl, zones] = await Promise.all([
+  const [s, comps, tl, zones, live] = await Promise.all([
     unwrap(c.GET("/products/{product}/run/summary", path)),
     unwrap(c.GET("/products/{product}/components", path)),
     unwrap(c.GET("/products/{product}/timeline", path)),
     unwrap(c.GET("/products/{product}/zones", path)),
+    unwrap(c.GET("/products/{product}/live/snapshot", path)),
   ]);
+  const relay = live.relay;
+  const forHuman = relay.waiting.filter((h) => h.direction === "agent_to_human");
+  const blocking = forHuman.filter((h) => h.blocking);
   const zoneIds = new Set(zones.items.map((z) => z.id));
   const a = s.autonomy;
   const g = s.guarantees;
@@ -63,6 +67,24 @@ export default async function RunPage({ params }: { params: Promise<{ product: s
         }
         right={<Link className="btn" href={`${p}/run/live`}><span className="live" />Voir le système travailler</Link>}
       />
+
+      <Link href={`${p}/run/live`} className="glass" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 16, padding: "16px 22px", color: "inherit", borderColor: blocking.length ? "rgba(251,191,36,.35)" : undefined }}>
+        <div>
+          <div className="label c-warn">L&apos;agent attend de vous</div>
+          <div style={{ fontSize: 22, fontWeight: 300, marginTop: 6 }}>{forHuman.length} <span className="muted small">dont {blocking.length} bloquant{blocking.length > 1 ? "s" : ""}</span></div>
+          {blocking[0] && <div className="small" style={{ marginTop: 4 }}>{blocking[0].title}</div>}
+        </div>
+        <div>
+          <div className="label c-agent">Fait par l&apos;agent, seul · {relay.windowHours} h</div>
+          <div style={{ fontSize: 22, fontWeight: 300, marginTop: 6 }}>{relay.autonomous.count} <span className="muted small">actions dans ses droits</span></div>
+          <div className="small muted" style={{ marginTop: 4 }}>{relay.autonomous.examples[0]}</div>
+        </div>
+        <div>
+          <div className="label c-info">Vos gestes · {relay.windowHours} h</div>
+          <div style={{ fontSize: 22, fontWeight: 300, marginTop: 6 }}>{relay.humanGestures} <span className="muted small">{relay.medianWaitSeconds != null ? `réponse médiane ${duration(relay.medianWaitSeconds)}` : ""}</span></div>
+          {relay.recent[0]?.unblocked && <div className="small c-ok" style={{ marginTop: 4 }}>→ {relay.recent[0].unblocked}</div>}
+        </div>
+      </Link>
 
       <div className="kpis">
         <Kpi

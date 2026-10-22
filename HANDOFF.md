@@ -25,6 +25,8 @@ La console est finie et testée contre un faux backend. Il reste à servir le **
 
 | Endpoints | Source dans Standard |
 |---|---|
+| `topology` | Carte de la release servie : nœuds = ressources et composants (plateforme Standard / produit / hors Standard), arêtes = chemins observés (Envoy, OTel, proxy de sortie, connexions Postgres), et pour chaque garantie ce qu'elle protège (`protects`) et ce qui est exposé si elle tombe (`ifBroken`, `severity`). Les ids de nœuds/arêtes sont repris par `LiveEvent.node` / `LiveEvent.edge` pour animer la carte. |
+| `live/snapshot.relay` | Relation IA ↔ humain : relais ouverts (`waiting`, ce que l'agent attend d'un humain et l'inverse, `blocking` si l'agent est arrêté), relais bouclés (`recent`, avec ce qu'ils ont débloqué), actions faites seules par l'agent. Chaque geste humain doit aussi émettre un `LiveEvent` `human.gesture`, chaque question de l'agent un `agent.question`. |
 | `run/summary`, `components` | Read model : agrégats sur releases, garanties, missions. `value.*` vient du calcul de valeur (estimation marquée `estimated: true`). `autonomy` : composants maintenus sans intervention / composants sous Standard, Hors Standard exclu. |
 | `live/snapshot`, `live/stream` | Bus d'événements interne : orchestrateur des bacs (agent.step, refusal), runner de précontrôles, juges (judge.verdict), contrôleur de release (canary), sondes (probe.result), noyau (fact.admitted). Le snapshot = état courant, le flux = tout ce qui suit. |
 | `traces/{trace}`, `refusals` | Envoy (entrée) + décisions Cedar + RLS Postgres + proxy de sortie, corrélés par l'en-tête `X-Standard-Trace` / trace OTel. `rule.source` et `failingClause` viennent de l'évaluation Cedar. `cli` = sortie de `standard why`. |
@@ -57,7 +59,7 @@ Le faux backend renvoie un `rpId` en `.invalid` : la console envoie alors `demo.
 
 ## 5. Ordre de branchement conseillé
 
-1. **`live/snapshot` + `live/stream`** et **`traces/{trace}` + `refusals`.** C'est la preuve de valeur en démo : on voit le système travailler sur le vrai produit, et chaque refus s'explique.
+1. **`live/snapshot` (avec `relay`) + `live/stream`**, **`topology`** et **`traces/{trace}` + `refusals`.** C'est la preuve de valeur en démo : on voit le système travailler sur le vrai produit, et chaque refus s'explique.
 2. `run/summary`, `components`, `guarantees`, `gaps`, `timeline`, `journal/*`.
 3. `decisions` + `resolve` avec WebAuthn.
 4. `missions`, `candidates`, `agent/*`.
