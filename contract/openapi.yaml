@@ -1,0 +1,1698 @@
+openapi: 3.1.0
+info:
+  title: Standard Console API
+  version: 0.1.0
+  description: |
+    Contrat entre la console Standard (interface) et Standard (read model, noyau, plateforme).
+
+    Règles du contrat :
+    - La console ne décide jamais. Elle lit le read model et transmet des gestes.
+    - Tout objet affiché porte son état (`State`) et, quand il s'agit d'une preuve, son niveau (`EvidenceLevel`).
+    - Une absence de mesure est `inconnu` ou `non_couvert`, jamais une valeur favorable.
+    - Les gestes humains (décisions, modes de panne) sont signés (WebAuthn) et renvoient une entrée de journal.
+    - Le direct passe par Server-Sent Events (`text/event-stream`), un événement `LiveEvent` par message.
+servers:
+  - url: /api/v1
+security:
+  - session: []
+tags:
+  - name: run
+  - name: decisions
+  - name: proofs
+  - name: agent
+  - name: zones
+
+paths:
+  /products/{product}/run/summary:
+    get:
+      tags: [run]
+      operationId: getRunSummary
+      parameters: [{ $ref: '#/components/parameters/product' }]
+      responses:
+        '200':
+          description: Vue d'ensemble Run
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RunSummary' }
+        default: { $ref: '#/components/responses/Problem' }
+
+  /products/{product}/components:
+    get:
+      tags: [run]
+      operationId: listComponents
+      parameters: [{ $ref: '#/components/parameters/product' }]
+      responses:
+        '200':
+          description: Composants du produit et leur autonomie
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/Component' } }
+        default: { $ref: '#/components/responses/Problem' }
+
+  /products/{product}/live/snapshot:
+    get:
+      tags: [run]
+      operationId: getLiveSnapshot
+      parameters: [{ $ref: '#/components/parameters/product' }]
+      responses:
+        '200':
+          description: État instantané de la chaîne (bac, précontrôle, jugement, release, sondes)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LiveSnapshot' }
+        default: { $ref: '#/components/responses/Problem' }
+
+  /products/{product}/live/stream:
+    get:
+      tags: [run]
+      operationId: streamLive
+      description: Flux SSE. Chaque message `data:` est un `LiveEvent` en JSON ; `event:` reprend `LiveEvent.type`.
+      parameters: [{ $ref: '#/components/parameters/product' }]
+      responses:
+        '200':
+          description: Flux d'événements
+          content:
+            text/event-stream:
+              schema: { $ref: '#/components/schemas/LiveEvent' }
+
+  /products/{product}/traces/{trace}:
+    get:
+      tags: [run]
+      operationId: getTrace
+      description: « Pourquoi refusé ? » — trajet complet d'une requête identifiée par l'en-tête X-Standard-Trace.
+      parameters:
+        - { $ref: '#/components/parameters/product' }
+        - { name: trace, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: Trace
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Trace' }
+        default: { $ref: '#/components/responses/Problem' }
+
+  /products/{product}/refusals:
+    get:
+      tags: [run]
+      operationId: listRefusals
+      parameters:
+        - { $ref: '#/components/parameters/product' }
+        - { name: windowHours, in: query, schema: { type: integer, default: 24, minimum: 1, maximum: 720 } }
+      responses:
+        '200':
+          description: Refus récents regroupés
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [windowHours, items]
+                properties:
+                  windowHours: { type: integer }
+                  items: { type: array, items: { $ref: '#/components/schemas/RefusalGroup' } }
+        default: { $ref: '#/components/responses/Problem' }
+
+  /products/{product}/decisions:
+    get:
+      tags: [decisions]
+      operationId: listDecisions
+      parameters:
+        - { $ref: '#/components/parameters/product' }
+        - { name: status, in: query, schema: { type: string, enum: [open, auto_granted, resolved, all], default: open } }
+      responses:
+        '200':
+          description: Décisions qui reviennent à l'humain
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, agentDecided]
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/Decision' } }
+                  agentDecided: { $ref: '#/components/schemas/AgentDecidedSummary' }
+        default: { $ref: '#/components/responses/Problem' }
+
+  /products/{product}/decisions/{decision}/resolve:
+    post:
+      tags: [decisions]
+      operationId: resolveDecision
+      description: Geste humain signé. Renvoie l'entrée de journal créée.
+      parameters:
+        - { $ref: '#/components/parameters/product' }
+        - { name: decision, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DecisionResolution' }
+      responses:
+        '202':
+          description: Geste admis au journal
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GestureReceipt' }
+        default: { $ref: '#/components/responses/Problem' }
+
+  /products/{product}/guarantees:
+    get:
+      tags: [proofs]
+      operationId: listGuarantees
+      parameters: [{ $ref: '#/components/parameters/product' }]
+      responses:
+        '200':
+          description: Garanties situées
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, counts]
+                properties:
+                  counts: { $ref: '#/components/schemas/StateCounts' }
+                  items: { type: array, items: { $ref: '#/components/schemas/Guarantee' } }
+        default: { $ref: '#/components/responses/Problem' }
+
+  /products/{product}/guarantees/{guarantee}/chain:
+    get:
+      tags: [proofs]
+      operationId: getProofChain
+      parameters:
+        - { $ref: '#/components/parameters/product' }
+        - { name: guarantee, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: Chaîne de preuve d'une garantie
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProofChain' }
+        default: { $ref: '#/components/responses/Problem' }
+
+  /products/{product}/gaps:
+    get:
+      tags: [proofs]
+      operationId: listGaps
+      parameters: [{ $ref: '#/components/parameters/product' }]
+      responses:
+        '200':
+          description: Écarts ouverts et frontières hors Standard
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, outsideStandard]
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/Gap' } }
+                  outsideStandard: { type: array, items: { $ref: '#/components/schemas/Frontier' } }
+        default: { $ref: '#/components/responses/Problem' }
+
+  /products/{product}/timeline:
+    get:
+      tags: [proofs]
+      operationId: listTimeline
+      parameters:
+        - { $ref: '#/components/parameters/product' }
+        - { name: actor, in: query, schema: { $ref: '#/components/schemas/Actor' } }
+        - { name: zone, in: query, schema: { type: string } }
+        - { name: cursor, in: query, schema: { type: string } }
+      responses:
+        '200':
+          description: Lecture chronologique du journal
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/TimelineEntry' } }
+                  nextCursor: { type: [string, 'null'] }
+        default: { $ref: '#/components/responses/Problem' }
+
+  /products/{product}/journal/integrity:
+    get:
+      tags: [proofs]
+      operationId: getJournalIntegrity
+      parameters: [{ $ref: '#/components/parameters/product' }]
+      responses:
+        '200':
+          description: Intégrité du journal
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/JournalIntegrity' }
+        default: { $ref: '#/components/responses/Problem' }
+
+  /products/{product}/journal/verify:
+    post:
+      tags: [proofs]
+      operationId: verifyJournal
+      description: Relance la vérification complète de la chaîne (rejeu et ancrage).
+      parameters: [{ $ref: '#/components/parameters/product' }]
+      responses:
+        '202':
+          description: Vérification lancée
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/JournalIntegrity' }
+        default: { $ref: '#/components/responses/Problem' }
+
+  /products/{product}/compliance/{framework}:
+    get:
+      tags: [proofs]
+      operationId: getCompliance
+      parameters:
+        - { $ref: '#/components/parameters/product' }
+        - { name: framework, in: path, required: true, schema: { type: string, enum: [iso27001, dora, nis2] } }
+      responses:
+        '200':
+          description: Contrôles du référentiel et preuves fournies
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ComplianceReport' }
+        default: { $ref: '#/components/responses/Problem' }
+
+  /products/{product}/exports:
+    post:
+      tags: [proofs]
+      operationId: createExport
+      parameters: [{ $ref: '#/components/parameters/product' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ExportRequest' }
+      responses:
+        '202':
+          description: Export en préparation
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ExportJob' }
+        default: { $ref: '#/components/responses/Problem' }
+    get:
+      tags: [proofs]
+      operationId: listExports
+      parameters: [{ $ref: '#/components/parameters/product' }]
+      responses:
+        '200':
+          description: Exports précédents
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/ExportJob' } }
+        default: { $ref: '#/components/responses/Problem' }
+
+  /products/{product}/exports/{export}:
+    get:
+      tags: [proofs]
+      operationId: getExport
+      parameters:
+        - { $ref: '#/components/parameters/product' }
+        - { name: export, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: État d'un export
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ExportJob' }
+        default: { $ref: '#/components/responses/Problem' }
+
+  /products/{product}/missions:
+    get:
+      tags: [agent]
+      operationId: listMissions
+      parameters: [{ $ref: '#/components/parameters/product' }]
+      responses:
+        '200':
+          description: Missions de l'agent
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/Mission' } }
+        default: { $ref: '#/components/responses/Problem' }
+    post:
+      tags: [agent]
+      operationId: createMission
+      description: « Construire » — l'humain décrit ce qu'il veut, l'agent ouvre une mission.
+      parameters: [{ $ref: '#/components/parameters/product' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MissionCreate' }
+      responses:
+        '201':
+          description: Mission créée
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Mission' }
+        default: { $ref: '#/components/responses/Problem' }
+
+  /products/{product}/missions/{mission}:
+    get:
+      tags: [agent]
+      operationId: getMission
+      parameters:
+        - { $ref: '#/components/parameters/product' }
+        - { name: mission, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: Mission avec conversation et plan de livraison
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MissionDetail' }
+        default: { $ref: '#/components/responses/Problem' }
+
+  /products/{product}/missions/{mission}/messages:
+    post:
+      tags: [agent]
+      operationId: postMissionMessage
+      parameters:
+        - { $ref: '#/components/parameters/product' }
+        - { name: mission, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MessageCreate' }
+      responses:
+        '202':
+          description: Message transmis à l'agent
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MissionMessage' }
+        default: { $ref: '#/components/responses/Problem' }
+
+  /products/{product}/missions/{mission}/stream:
+    get:
+      tags: [agent]
+      operationId: streamMission
+      description: Flux SSE de la mission (messages de l'agent, étapes du plan). Chaque message est un `LiveEvent`.
+      parameters:
+        - { $ref: '#/components/parameters/product' }
+        - { name: mission, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: Flux d'événements de la mission
+          content:
+            text/event-stream:
+              schema: { $ref: '#/components/schemas/LiveEvent' }
+
+  /products/{product}/candidates/{candidate}:
+    get:
+      tags: [agent]
+      operationId: getCandidate
+      parameters:
+        - { $ref: '#/components/parameters/product' }
+        - { name: candidate, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: Candidat (diff, relectures, précontrôles, leçons)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Candidate' }
+        default: { $ref: '#/components/responses/Problem' }
+
+  /products/{product}/agent/metrics:
+    get:
+      tags: [agent]
+      operationId: getAgentMetrics
+      parameters: [{ $ref: '#/components/parameters/product' }]
+      responses:
+        '200':
+          description: Métriques de l'agent
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AgentMetrics' }
+        default: { $ref: '#/components/responses/Problem' }
+
+  /products/{product}/agent/autonomy:
+    get:
+      tags: [agent]
+      operationId: getAutonomyLadder
+      parameters: [{ $ref: '#/components/parameters/product' }]
+      responses:
+        '200':
+          description: Échelle d'autonomie par classe de tâches
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/AutonomyClass' } }
+        default: { $ref: '#/components/responses/Problem' }
+
+  /products/{product}/agent/models:
+    get:
+      tags: [agent]
+      operationId: getModelRouting
+      parameters: [{ $ref: '#/components/parameters/product' }]
+      responses:
+        '200':
+          description: Routage des modèles
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/ModelRoute' } }
+        default: { $ref: '#/components/responses/Problem' }
+
+  /products/{product}/zones:
+    get:
+      tags: [zones]
+      operationId: listZones
+      parameters: [{ $ref: '#/components/parameters/product' }]
+      responses:
+        '200':
+          description: Zones du produit et dépendances communes
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, sharedDependencies]
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/Zone' } }
+                  sharedDependencies: { type: array, items: { $ref: '#/components/schemas/SharedDependency' } }
+        default: { $ref: '#/components/responses/Problem' }
+
+  /products/{product}/zones/{zone}/inventory:
+    get:
+      tags: [zones]
+      operationId: getInventory
+      parameters:
+        - { $ref: '#/components/parameters/product' }
+        - { $ref: '#/components/parameters/zone' }
+      responses:
+        '200':
+          description: Inventaire (extracteurs, IA, réel)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Inventory' }
+        default: { $ref: '#/components/responses/Problem' }
+
+  /products/{product}/inventory/{item}:
+    patch:
+      tags: [zones]
+      operationId: patchInventoryItem
+      parameters:
+        - { $ref: '#/components/parameters/product' }
+        - { name: item, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/InventoryPatch' }
+      responses:
+        '200':
+          description: Ligne mise à jour
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/InventoryItem' }
+        default: { $ref: '#/components/responses/Problem' }
+
+  /products/{product}/zones/{zone}/dossier:
+    get:
+      tags: [zones]
+      operationId: getDossier
+      parameters:
+        - { $ref: '#/components/parameters/product' }
+        - { $ref: '#/components/parameters/zone' }
+      responses:
+        '200':
+          description: Les deux cartes (ressources, opérations) et les files
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Dossier' }
+        default: { $ref: '#/components/responses/Problem' }
+
+  /products/{product}/zones/{zone}/policy:
+    get:
+      tags: [zones]
+      operationId: getPolicy
+      parameters:
+        - { $ref: '#/components/parameters/product' }
+        - { $ref: '#/components/parameters/zone' }
+      responses:
+        '200':
+          description: Politique Cedar de la zone
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Policy' }
+        default: { $ref: '#/components/responses/Problem' }
+
+  /products/{product}/zones/{zone}/policy/shadow-refusals:
+    get:
+      tags: [zones]
+      operationId: getShadowRefusals
+      parameters:
+        - { $ref: '#/components/parameters/product' }
+        - { $ref: '#/components/parameters/zone' }
+      responses:
+        '200':
+          description: Ce que la politique aurait refusé en mode observation
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ShadowRefusals' }
+        default: { $ref: '#/components/responses/Problem' }
+
+  /products/{product}/zones/{zone}/policy/proposals:
+    post:
+      tags: [zones]
+      operationId: proposePolicyChange
+      parameters:
+        - { $ref: '#/components/parameters/product' }
+        - { $ref: '#/components/parameters/zone' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PolicyProposal' }
+      responses:
+        '202':
+          description: Proposition créée (devient une décision ou une mission)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GestureReceipt' }
+        default: { $ref: '#/components/responses/Problem' }
+
+  /products/{product}/zones/{zone}/verification:
+    get:
+      tags: [zones]
+      operationId: getVerification
+      parameters:
+        - { $ref: '#/components/parameters/product' }
+        - { $ref: '#/components/parameters/zone' }
+      responses:
+        '200':
+          description: Vérification du comportement du dernier candidat de la zone
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/VerificationRun' }
+        default: { $ref: '#/components/responses/Problem' }
+
+  /products/{product}/zones/{zone}/transfers:
+    get:
+      tags: [zones]
+      operationId: listTransfers
+      parameters:
+        - { $ref: '#/components/parameters/product' }
+        - { $ref: '#/components/parameters/zone' }
+      responses:
+        '200':
+          description: Transferts de protections
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, failModes]
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/Transfer' } }
+                  failModes: { type: array, items: { $ref: '#/components/schemas/FailMode' } }
+        default: { $ref: '#/components/responses/Problem' }
+
+  /products/{product}/routes/fail-mode:
+    put:
+      tags: [zones]
+      operationId: setFailMode
+      description: Geste humain signé — comportement d'une route si un point d'application tombe.
+      parameters: [{ $ref: '#/components/parameters/product' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/FailModeUpdate' }
+      responses:
+        '202':
+          description: Geste admis au journal
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GestureReceipt' }
+        default: { $ref: '#/components/responses/Problem' }
+
+  /auth/gesture-challenge:
+    post:
+      tags: [decisions]
+      operationId: createGestureChallenge
+      description: Défi WebAuthn à signer avant tout geste humain (décision, mode de panne).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [purpose]
+              properties:
+                purpose: { type: string, description: "Geste visé, ex. decision:d-access-1" }
+      responses:
+        '200':
+          description: Défi à signer
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GestureChallenge' }
+        default: { $ref: '#/components/responses/Problem' }
+
+components:
+  securitySchemes:
+    session:
+      type: apiKey
+      in: cookie
+      name: standard_session
+      description: Session OIDC (oauth2-proxy + Keycloak).
+
+  parameters:
+    product:
+      name: product
+      in: path
+      required: true
+      schema: { type: string }
+    zone:
+      name: zone
+      in: path
+      required: true
+      schema: { type: string }
+
+  responses:
+    Problem:
+      description: Erreur (RFC 9457)
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+
+  schemas:
+    Problem:
+      type: object
+      required: [title, status]
+      properties:
+        type: { type: string }
+        title: { type: string }
+        status: { type: integer }
+        detail: { type: string }
+        trace: { type: string, description: Identifiant X-Standard-Trace si un refus est en cause }
+
+    State:
+      type: string
+      description: |
+        qualifie : preuve indépendante sur la release servie · observe : vu sur le réel, pas encore qualifié ·
+        propose : suggestion (IA ou humain) non confirmée · inconnu : mesure absente ou périmée ·
+        non_couvert : aucune preuve possible aujourd'hui · non_etaye : trouvaille IA dont la citation échoue ·
+        hors_standard : hors du périmètre de Standard
+      enum: [qualifie, observe, propose, inconnu, non_couvert, non_etaye, hors_standard]
+
+    EvidenceLevel:
+      type: string
+      enum: [lu, observe, verifie, hors_standard]
+
+    Actor:
+      type: string
+      enum: [human, agent, kernel, probe, change, platform]
+
+    SourceRef:
+      type: object
+      required: [path]
+      properties:
+        path: { type: string }
+        line: { type: integer }
+        commit: { type: string }
+
+    JournalRef:
+      type: object
+      required: [entry, hash]
+      properties:
+        entry: { type: integer }
+        hash: { type: string }
+
+    ObjectRef:
+      type: object
+      required: [kind, id]
+      properties:
+        kind: { type: string, enum: [mission, candidate, trace, guarantee, gap, decision, zone, release, journal] }
+        id: { type: string }
+
+    StateCounts:
+      type: object
+      required: [qualifie, observe, propose, inconnu, non_couvert]
+      properties:
+        qualifie: { type: integer }
+        observe: { type: integer }
+        propose: { type: integer }
+        inconnu: { type: integer }
+        non_couvert: { type: integer }
+
+    GestureSignature:
+      type: object
+      required: [type, assertion]
+      properties:
+        type: { type: string, enum: [webauthn] }
+        assertion: { type: string, description: Assertion WebAuthn encodée en base64url }
+
+    GestureChallenge:
+      type: object
+      required: [challenge, rpId, expiresAt]
+      properties:
+        challenge: { type: string, description: base64url }
+        rpId: { type: string }
+        expiresAt: { type: string, format: date-time }
+        allowCredentials: { type: array, items: { type: string } }
+
+    GestureReceipt:
+      type: object
+      required: [journal]
+      properties:
+        journal: { $ref: '#/components/schemas/JournalRef' }
+        createdRef: { $ref: '#/components/schemas/ObjectRef' }
+
+    Metric:
+      type: object
+      required: [key, label, value]
+      properties:
+        key: { type: string }
+        label: { type: string }
+        value: { type: [number, 'null'] }
+        unit: { type: string }
+        display: { type: string, description: Valeur déjà formatée si nécessaire }
+
+    RunSummary:
+      type: object
+      required: [product, servedRelease, lastFactAt, platform, value, autonomy, guarantees, limits, reopenedZones]
+      properties:
+        product: { type: string }
+        servedRelease: { type: string }
+        lastFactAt: { type: string, format: date-time }
+        platform:
+          type: object
+          required: [integrity, silentProbes]
+          properties:
+            integrity: { type: string, enum: [intact, broken, unknown] }
+            silentProbes: { type: integer }
+        value:
+          type: object
+          required: [engineerHours, cvesFixed, incidentsAvoided, auditPrep, monthlyCost]
+          properties:
+            engineerHours:
+              type: object
+              required: [value, estimated, period]
+              properties:
+                value: { type: number }
+                estimated: { type: boolean }
+                period: { type: string }
+                methodUrl: { type: string }
+            cvesFixed:
+              type: object
+              required: [count, medianDelaySeconds]
+              properties:
+                count: { type: integer }
+                medianDelaySeconds: { type: integer }
+            incidentsAvoided: { type: integer }
+            auditPrep:
+              type: object
+              required: [days]
+              properties:
+                days: { type: number }
+                previousDeclaredDays: { type: [number, 'null'] }
+            monthlyCost:
+              type: object
+              required: [amount, currency]
+              properties:
+                amount: { type: [number, 'null'] }
+                currency: { type: string }
+                note: { type: string }
+        autonomy:
+          type: object
+          required: [percent, autonomous, total, windowDays, breakdown]
+          properties:
+            percent: { type: number }
+            autonomous: { type: integer }
+            total: { type: integer, description: Composants sous Standard (hors Standard exclus) }
+            windowDays: { type: integer }
+            breakdown:
+              type: object
+              required: [autonomous, withIntervention, unknown, notCovered, outsideStandard]
+              properties:
+                autonomous: { type: integer }
+                withIntervention: { type: integer }
+                unknown: { type: integer }
+                notCovered: { type: integer }
+                outsideStandard: { type: integer }
+        guarantees: { $ref: '#/components/schemas/StateCounts' }
+        limits:
+          type: array
+          items:
+            type: object
+            required: [title, reason]
+            properties:
+              title: { type: string }
+              reason: { type: string }
+        reopenedZones:
+          type: array
+          items:
+            type: object
+            required: [zoneId, name, reason, detail]
+            properties:
+              zoneId: { type: string }
+              name: { type: string }
+              reason: { type: string }
+              detail: { type: string }
+
+    Component:
+      type: object
+      required: [id, name, state, autonomy, metrics, series]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        state: { $ref: '#/components/schemas/State' }
+        stateLabel: { type: string }
+        autonomy:
+          type: object
+          required: [autonomous]
+          properties:
+            autonomous: { type: boolean }
+            limit: { type: string }
+            reason: { type: string }
+        metrics: { type: array, items: { $ref: '#/components/schemas/Metric' } }
+        series: { type: array, items: { type: [number, 'null'] }, description: Série récente ; null = mesure absente }
+
+    LiveSnapshot:
+      type: object
+      required: [counters, missions, prechecks, judgements, release, probes, events]
+      properties:
+        counters:
+          type: object
+          required: [activeSandboxes, externalAgents, prechecks, judgements, probes15m, probesConform, factsPerHour]
+          properties:
+            activeSandboxes: { type: integer }
+            externalAgents: { type: integer }
+            prechecks: { type: integer }
+            judgements: { type: integer }
+            probes15m: { type: integer }
+            probesConform: { type: integer }
+            factsPerHour: { type: integer }
+        missions:
+          type: array
+          items:
+            type: object
+            required: [id, title, badge, steps]
+            properties:
+              id: { type: string }
+              title: { type: string }
+              badge: { type: string }
+              external: { type: boolean }
+              steps:
+                type: array
+                items:
+                  type: object
+                  required: [label, status]
+                  properties:
+                    label: { type: string }
+                    status: { type: string, enum: [done, running, pending, refused, handed_off] }
+        prechecks:
+          type: array
+          items:
+            type: object
+            required: [missionId, candidateId, elapsedSeconds, tools]
+            properties:
+              missionId: { type: string }
+              candidateId: { type: string }
+              elapsedSeconds: { type: integer }
+              expectedSeconds: { type: integer }
+              tools:
+                type: array
+                items:
+                  type: object
+                  required: [tool, progress, status]
+                  properties:
+                    tool: { type: string }
+                    progress: { type: number, minimum: 0, maximum: 1 }
+                    status: { type: string, enum: [running, passed, failed] }
+                    detail: { type: string }
+        judgements:
+          type: array
+          items:
+            type: object
+            required: [candidateId, title, judges]
+            properties:
+              candidateId: { type: string }
+              title: { type: string }
+              judges:
+                type: array
+                items:
+                  type: object
+                  required: [name, status]
+                  properties:
+                    name: { type: string }
+                    status: { type: string, enum: [conform, replaying, refused] }
+        release:
+          type: [object, 'null']
+          required: [id, strategy, trafficShare, previous, health]
+          properties:
+            id: { type: string }
+            strategy: { type: string, enum: [canary, full, rollback] }
+            trafficShare: { type: number }
+            previous: { type: string }
+            health: { type: string }
+        probes:
+          type: array
+          items: { $ref: '#/components/schemas/ProbeStatus' }
+        events:
+          type: array
+          items: { $ref: '#/components/schemas/LiveEvent' }
+
+    ProbeStatus:
+      type: object
+      required: [id, label, status, lastAt]
+      properties:
+        id: { type: string }
+        label: { type: string }
+        status: { type: string, enum: [ok, silent, failed, not_covered] }
+        lastAt: { type: [string, 'null'], format: date-time }
+        guaranteeId: { type: string }
+
+    LiveEvent:
+      type: object
+      required: [id, at, type, actor, tag, summary]
+      properties:
+        id: { type: string }
+        at: { type: string, format: date-time }
+        type:
+          type: string
+          enum: [agent.step, agent.message, precheck.progress, judge.verdict, release.progress, probe.result, fact.admitted, refusal, plan.step]
+        actor: { $ref: '#/components/schemas/Actor' }
+        tag: { type: string, description: Libellé court affiché (ex. « bac m-121 ») }
+        tone: { type: string, enum: [ok, info, warn, bad, agent] }
+        summary: { type: string }
+        ref: { $ref: '#/components/schemas/ObjectRef' }
+        journal: { $ref: '#/components/schemas/JournalRef' }
+        payload: { type: object, additionalProperties: true }
+
+    Trace:
+      type: object
+      required: [id, at, request, subject, release, hops, verdict]
+      properties:
+        id: { type: string }
+        at: { type: string, format: date-time }
+        request:
+          type: object
+          required: [method, path, status]
+          properties:
+            method: { type: string }
+            path: { type: string }
+            status: { type: integer }
+        subject: { type: string, description: Identifiant pseudonymisé }
+        release: { type: string }
+        verdict: { type: string, enum: [allowed, refused] }
+        hops:
+          type: array
+          items:
+            type: object
+            required: [stage, outcome, label]
+            properties:
+              stage: { type: string, enum: [entry, policy, data, egress, sandbox] }
+              label: { type: string }
+              outcome: { type: string, enum: [ok, refused, not_reached] }
+              detail: { type: string }
+              durationMs: { type: number }
+              rule:
+                type: object
+                required: [file, line, version, source]
+                properties:
+                  file: { type: string }
+                  line: { type: integer }
+                  version: { type: string }
+                  source: { type: string }
+                  failingClause: { type: string }
+        cli: { type: string, description: Sortie équivalente de `standard why` }
+
+    RefusalGroup:
+      type: object
+      required: [route, stage, count]
+      properties:
+        route: { type: string }
+        stage: { type: string, enum: [entry, policy, data, egress, sandbox, budget] }
+        count: { type: integer }
+        sampleTrace: { type: string }
+
+    Decision:
+      type: object
+      required: [id, kind, status, title, context, options, createdAt]
+      properties:
+        id: { type: string }
+        kind: { type: string, enum: [access, business, irreversible, rule] }
+        status: { type: string, enum: [open, auto_granted, resolved] }
+        title: { type: string }
+        context: { type: string }
+        scope: { type: string }
+        recommendation:
+          type: object
+          required: [source, text]
+          properties:
+            source: { type: string, description: « IA » ou identifiant de règle pré-signée (ex. R-3) }
+            text: { type: string }
+        options:
+          type: array
+          items:
+            type: object
+            required: [id, label]
+            properties:
+              id: { type: string }
+              label: { type: string }
+              primary: { type: boolean }
+        createdAt: { type: string, format: date-time }
+        expiresAt: { type: [string, 'null'], format: date-time }
+        links: { type: array, items: { $ref: '#/components/schemas/ObjectRef' } }
+
+    AgentDecidedSummary:
+      type: object
+      required: [windowDays, total, breakdown]
+      properties:
+        windowDays: { type: integer }
+        total: { type: integer }
+        breakdown:
+          type: array
+          items:
+            type: object
+            required: [label, count]
+            properties:
+              label: { type: string }
+              count: { type: integer }
+
+    DecisionResolution:
+      type: object
+      required: [optionId, signature]
+      properties:
+        optionId: { type: string }
+        comment: { type: string }
+        signature: { $ref: '#/components/schemas/GestureSignature' }
+
+    Guarantee:
+      type: object
+      required: [id, title, path, instrument, window, freshness, state]
+      properties:
+        id: { type: string }
+        title: { type: string }
+        path: { type: string, description: Trajet mesuré }
+        instrument: { type: string }
+        window: { type: string }
+        freshness: { type: string }
+        stale: { type: boolean }
+        state: { $ref: '#/components/schemas/State' }
+        value: { type: string }
+        release: { type: string }
+        level: { $ref: '#/components/schemas/EvidenceLevel' }
+
+    ProofChain:
+      type: object
+      required: [guaranteeId, title, links]
+      properties:
+        guaranteeId: { type: string }
+        title: { type: string }
+        links:
+          type: array
+          items:
+            type: object
+            required: [stage, label, status]
+            properties:
+              stage: { type: string, enum: [resource, probe, capture, instrument, observation, fact, guarantee] }
+              label: { type: string }
+              status: { type: string, enum: [ok, broken, pending, unknown] }
+        lastQualified:
+          type: [object, 'null']
+          required: [value, at, release]
+          properties:
+            value: { type: string }
+            at: { type: string, format: date-time }
+            release: { type: string }
+            reused: { type: boolean, description: Toujours false si la release diffère }
+
+    Gap:
+      type: object
+      required: [id, title, guarantee, displayedAs, owner, nextStep, scope]
+      properties:
+        id: { type: string }
+        title: { type: string }
+        guarantee: { type: string }
+        displayedAs: { type: string, enum: [non_couvert, inconnu, detecte, limite_plateforme, partiel] }
+        owner: { type: string, enum: [standard, client, assumed] }
+        nextStep: { type: string }
+        scope: { type: string, enum: [product, platform] }
+        decisionId: { type: string }
+
+    Frontier:
+      type: object
+      required: [name, note]
+      properties:
+        name: { type: string }
+        note: { type: string }
+
+    TimelineEntry:
+      type: object
+      required: [id, at, actor, title, journal]
+      properties:
+        id: { type: string }
+        at: { type: string, format: date-time }
+        actor: { $ref: '#/components/schemas/Actor' }
+        title: { type: string }
+        detail: { type: string }
+        badge: { type: string }
+        journal: { $ref: '#/components/schemas/JournalRef' }
+        refs: { type: array, items: { $ref: '#/components/schemas/ObjectRef' } }
+
+    JournalIntegrity:
+      type: object
+      required: [chained, replayMatches, entries, lastAnchor]
+      properties:
+        chained: { type: boolean }
+        replayMatches: { type: boolean }
+        entries: { type: integer }
+        lastAnchor:
+          type: object
+          required: [at, entry]
+          properties:
+            at: { type: string, format: date-time }
+            entry: { type: integer }
+
+    ComplianceReport:
+      type: object
+      required: [framework, title, totalControls, counts, controls]
+      properties:
+        framework: { type: string, enum: [iso27001, dora, nis2] }
+        title: { type: string }
+        totalControls: { type: integer }
+        counts:
+          type: object
+          required: [verifie, observe, lu, inconnu, non_couvert, hors_standard]
+          properties:
+            verifie: { type: integer }
+            observe: { type: integer }
+            lu: { type: integer }
+            inconnu: { type: integer }
+            non_couvert: { type: integer }
+            hors_standard: { type: integer }
+        controls:
+          type: array
+          items:
+            type: object
+            required: [id, title, evidence, levels]
+            properties:
+              id: { type: string }
+              title: { type: string }
+              evidence: { type: string }
+              levels:
+                type: array
+                items:
+                  type: string
+                  enum: [verifie, observe, lu, inconnu, non_couvert, hors_standard]
+        lastSnapshot:
+          type: [object, 'null']
+          required: [at, release, sha256]
+          properties:
+            at: { type: string, format: date-time }
+            release: { type: string }
+            sha256: { type: string }
+
+    ExportRequest:
+      type: object
+      required: [format]
+      properties:
+        format: { type: string, enum: [audit_bundle, oscal, vanta, drata, dora, sbom_cyclonedx, siem, exit_bundle] }
+        framework: { type: string, enum: [iso27001, dora, nis2] }
+
+    ExportJob:
+      type: object
+      required: [id, format, status, createdAt]
+      properties:
+        id: { type: string }
+        format: { type: string }
+        status: { type: string, enum: [pending, ready, failed] }
+        createdAt: { type: string, format: date-time }
+        release: { type: string }
+        url: { type: string }
+        sha256: { type: string }
+        includesGaps: { type: boolean, description: Toujours true }
+
+    PlanStep:
+      type: object
+      required: [key, status, label, detail]
+      properties:
+        key: { type: string, enum: [spec, impact, policy, code, proof, release] }
+        label: { type: string }
+        status: { type: string, enum: [done, warning, pending, running] }
+        detail: { type: string }
+        code: { type: string }
+        link: { $ref: '#/components/schemas/ObjectRef' }
+
+    Mission:
+      type: object
+      required: [id, title, kind, status, zoneId, branch, model, startedAt]
+      properties:
+        id: { type: string }
+        title: { type: string }
+        kind: { type: string, enum: [feature, cve, upgrade, bugfix, removal, extractor] }
+        status: { type: string, enum: [running, awaiting_decision, admitted, refused, released] }
+        zoneId: { type: string }
+        branch: { type: string }
+        model: { type: string }
+        external: { type: boolean }
+        startedAt: { type: string, format: date-time }
+        costEur: { type: number }
+        agentMinutes: { type: number }
+        pendingDecisionId: { type: string }
+
+    MissionDetail:
+      allOf:
+        - { $ref: '#/components/schemas/Mission' }
+        - type: object
+          required: [messages, plan, context]
+          properties:
+            messages: { type: array, items: { $ref: '#/components/schemas/MissionMessage' } }
+            plan: { type: array, items: { $ref: '#/components/schemas/PlanStep' } }
+            context:
+              type: object
+              required: [zone, rules, blocks, files, testExpectations, capabilities]
+              properties:
+                zone: { type: string }
+                rules: { type: string }
+                blocks: { type: array, items: { type: string } }
+                files: { type: array, items: { type: string } }
+                testExpectations: { type: string }
+                capabilities: { type: string }
+            candidateId: { type: string }
+
+    MissionMessage:
+      type: object
+      required: [id, role, at]
+      properties:
+        id: { type: string }
+        role: { type: string, enum: [human, agent] }
+        at: { type: string, format: date-time }
+        text: { type: string }
+        question: { type: string, description: Question métier mise en avant }
+        actions:
+          type: array
+          items:
+            type: object
+            required: [id, label]
+            properties:
+              id: { type: string }
+              label: { type: string }
+              primary: { type: boolean }
+
+    MissionCreate:
+      type: object
+      required: [prompt]
+      properties:
+        prompt: { type: string, minLength: 3 }
+        zoneId: { type: string }
+
+    MessageCreate:
+      type: object
+      properties:
+        text: { type: string }
+        actionId: { type: string, description: "Bouton d'action proposé par l'agent" }
+      minProperties: 1
+      description: Texte libre ou action proposée (au moins l'un des deux).
+
+    Candidate:
+      type: object
+      required: [id, missionId, additions, deletions, files, diff, reviews, prechecks, precheckSeconds, lessons]
+      properties:
+        id: { type: string }
+        missionId: { type: string }
+        additions: { type: integer }
+        deletions: { type: integer }
+        files: { type: array, items: { type: string } }
+        diff: { type: string, description: Diff unifié }
+        reviews:
+          type: array
+          items:
+            type: object
+            required: [reviewer, verdict, note]
+            properties:
+              reviewer: { type: string }
+              verdict: { type: string, enum: [conform, corrected, refused] }
+              note: { type: string }
+        prechecks:
+          type: array
+          items:
+            type: object
+            required: [tool, status, detail]
+            properties:
+              tool: { type: string }
+              status: { type: string, enum: [passed, failed, refused] }
+              detail: { type: string }
+        precheckSeconds: { type: integer }
+        lessons: { type: array, items: { type: string } }
+
+    AgentMetrics:
+      type: object
+      required: [windowDays, missions, admitted, rollbacks, firstPassRate, firstPassDelta, reworkAvg, costPerChangeEur, medianLeadTimeSeconds, sandboxRefusalsPerMission]
+      properties:
+        windowDays: { type: integer }
+        missions: { type: integer }
+        admitted: { type: integer }
+        rollbacks: { type: integer }
+        firstPassRate: { type: number }
+        firstPassDelta: { type: number }
+        reworkAvg: { type: number }
+        costPerChangeEur: { type: number }
+        medianLeadTimeSeconds: { type: integer }
+        sandboxRefusalsPerMission: { type: array, items: { type: number } }
+
+    AutonomyClass:
+      type: object
+      required: [id, label, tier, evidence, next]
+      properties:
+        id: { type: string }
+        label: { type: string }
+        tier: { type: integer, minimum: 1, maximum: 4 }
+        evidence: { type: string }
+        next: { type: string }
+        alwaysHuman: { type: boolean }
+
+    ModelRoute:
+      type: object
+      required: [task, share, model, location]
+      properties:
+        task: { type: string }
+        share: { type: string }
+        model: { type: string }
+        location: { type: string, enum: [self_hosted, frontier, external_agent] }
+
+    Zone:
+      type: object
+      required: [id, name, status, step]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        status: { type: string, enum: [discovery, frozen, transferring, live, not_started] }
+        statusLabel: { type: string }
+        step: { type: integer, minimum: 0, maximum: 7, description: Étape du parcours (1 Découvrir … 7 En service) }
+        policyVersion: { type: string }
+
+    SharedDependency:
+      type: object
+      required: [id, name, openIssues, severity]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        openIssues: { type: integer }
+        severity: { type: string, enum: [ok, warn, bad] }
+
+    InventoryItem:
+      type: object
+      required: [id, resource, kind, sources, evidence, state]
+      properties:
+        id: { type: string }
+        resource: { type: string }
+        kind: { type: string }
+        sources:
+          type: object
+          required: [extractor, ai, real]
+          properties:
+            extractor: { type: string, enum: [yes, no, warn] }
+            ai: { type: string, enum: [yes, no, warn] }
+            real: { type: string, enum: [yes, no, warn] }
+        evidence:
+          oneOf:
+            - { $ref: '#/components/schemas/SourceRef' }
+            - type: object
+              required: [text]
+              properties:
+                text: { type: string }
+                warn: { type: boolean }
+        state: { $ref: '#/components/schemas/State' }
+        stateLabel: { type: string }
+        unsupported:
+          type: object
+          required: [reasoning, failure, risk]
+          properties:
+            reasoning: { type: string }
+            failure: { type: string }
+            risk: { type: string }
+
+    Inventory:
+      type: object
+      required: [zoneId, commit, counts, items, aiExtractors]
+      properties:
+        zoneId: { type: string }
+        commit: { type: string }
+        counts:
+          type: object
+          required: [concordant, aiOnly, unsupported, outsideCode, dormant]
+          properties:
+            concordant: { type: integer }
+            aiOnly: { type: integer }
+            unsupported: { type: integer }
+            outsideCode: { type: integer }
+            dormant: { type: integer }
+        items: { type: array, items: { $ref: '#/components/schemas/InventoryItem' } }
+        aiExtractors:
+          type: array
+          items:
+            type: object
+            required: [candidateId, pattern, code, status, found]
+            properties:
+              candidateId: { type: string }
+              pattern: { type: string }
+              code: { type: string }
+              status: { type: string, enum: [proposed, admitted, refused] }
+              found: { type: integer }
+
+    InventoryPatch:
+      type: object
+      required: [action]
+      properties:
+        action: { type: string, enum: [confirm, correct, discard, provide_source, outside_repo] }
+        source: { $ref: '#/components/schemas/SourceRef' }
+        reason: { type: string }
+
+    Dossier:
+      type: object
+      required: [zoneId, commit, resources, operations, links, businessQuestions, securityRequests]
+      properties:
+        zoneId: { type: string }
+        commit: { type: string }
+        resources:
+          type: array
+          items:
+            type: object
+            required: [id, name, detail, state]
+            properties:
+              id: { type: string }
+              name: { type: string }
+              detail: { type: string }
+              mono: { type: boolean }
+              state: { $ref: '#/components/schemas/State' }
+              stateLabel: { type: string }
+        operations:
+          type: array
+          items:
+            type: object
+            required: [id, name, rule, state]
+            properties:
+              id: { type: string }
+              name: { type: string }
+              rule: { type: string }
+              state: { $ref: '#/components/schemas/State' }
+              stateLabel: { type: string }
+        links:
+          type: array
+          items:
+            type: object
+            required: [resourceId, operationId]
+            properties:
+              resourceId: { type: string }
+              operationId: { type: string }
+        businessQuestions:
+          type: array
+          items:
+            type: object
+            required: [title, detail]
+            properties:
+              title: { type: string }
+              detail: { type: string }
+              decisionId: { type: string }
+        securityRequests:
+          type: array
+          items:
+            type: object
+            required: [title, severity]
+            properties:
+              title: { type: string }
+              severity: { type: string, enum: [blocking, open, done] }
+
+    PolicyOperation:
+      type: object
+      required: [name, actor, object, precondition, budget, channel]
+      properties:
+        name: { type: string }
+        actor: { $ref: '#/components/schemas/PolicyField' }
+        object: { $ref: '#/components/schemas/PolicyField' }
+        precondition: { $ref: '#/components/schemas/PolicyField' }
+        budget: { $ref: '#/components/schemas/PolicyField' }
+        channel: { $ref: '#/components/schemas/PolicyField' }
+
+    PolicyField:
+      type: object
+      required: [value, gap]
+      properties:
+        value: { type: string }
+        gap: { type: boolean, description: true = écart à trancher par l'humain }
+        source: { type: string }
+
+    Policy:
+      type: object
+      required: [zoneId, file, version, source, mode, operations, readiness]
+      properties:
+        zoneId: { type: string }
+        file: { type: string }
+        version: { type: string }
+        source: { type: string, description: Source Cedar }
+        mode: { type: string, enum: [observation, enforcement] }
+        operations: { type: array, items: { $ref: '#/components/schemas/PolicyOperation' } }
+        readiness:
+          type: object
+          required: [defaultsFilled, defaultsTotal, gapsResolved, gapsTotal, quietHoursRequired, quietHoursReached]
+          properties:
+            defaultsFilled: { type: integer }
+            defaultsTotal: { type: integer }
+            gapsResolved: { type: integer }
+            gapsTotal: { type: integer }
+            quietHoursRequired: { type: integer }
+            quietHoursReached: { type: boolean }
+
+    ShadowRefusals:
+      type: object
+      required: [windowDays, total, requests, perDay, top]
+      properties:
+        windowDays: { type: integer }
+        total: { type: integer }
+        requests: { type: integer }
+        perDay:
+          type: array
+          items:
+            type: object
+            required: [date, primary, others]
+            properties:
+              date: { type: string, format: date }
+              primary: { type: integer }
+              others: { type: integer }
+        primaryLabel: { type: string }
+        top:
+          type: array
+          items:
+            type: object
+            required: [route, count, note]
+            properties:
+              route: { type: string }
+              count: { type: integer }
+              note: { type: string }
+              options:
+                type: array
+                items:
+                  type: object
+                  required: [id, label]
+                  properties:
+                    id: { type: string }
+                    label: { type: string }
+                    primary: { type: boolean }
+
+    PolicyProposal:
+      type: object
+      required: [kind]
+      properties:
+        kind: { type: string, enum: [allow_shadow_refusal, keep_refused, edit_operation] }
+        route: { type: string }
+        optionId: { type: string }
+        operation: { $ref: '#/components/schemas/PolicyOperation' }
+
+    VerificationRun:
+      type: object
+      required: [zoneId, candidateId, scenarios, scanners, failures]
+      properties:
+        zoneId: { type: string }
+        candidateId: { type: string }
+        scenarios:
+          type: array
+          items:
+            type: object
+            required: [title, expected, result, outcome]
+            properties:
+              title: { type: string }
+              expected: { type: string }
+              result: { type: string }
+              outcome: { type: string, enum: [passed, failed, not_covered, out_of_scope] }
+              outcomeLabel: { type: string }
+        scanners:
+          type: array
+          items:
+            type: object
+            required: [tool, reason, activated]
+            properties:
+              tool: { type: string }
+              reason: { type: string }
+              activated: { type: boolean }
+        catalog:
+          type: object
+          required: [rules, framework]
+          properties:
+            rules: { type: integer }
+            framework: { type: string }
+        failures:
+          type: array
+          items:
+            type: object
+            required: [summary, lesson]
+            properties:
+              summary: { type: string }
+              lesson: { type: string }
+              missionId: { type: string }
+
+    Transfer:
+      type: object
+      required: [id, control, location, target, targetDetail, stepsDone, decision]
+      properties:
+        id: { type: string }
+        control: { type: string }
+        location: { type: string }
+        target: { type: string }
+        targetDetail: { type: string }
+        stepsDone: { type: integer, minimum: 0, maximum: 5 }
+        blockedAt: { type: [integer, 'null'] }
+        status: { type: string }
+        decision: { type: string, enum: [removal_in_progress, removed, stays_in_product, business_rule, waiting, ready_to_switch] }
+        decisionLabel: { type: string }
+        stepLabels: { type: array, items: { type: string } }
+        proof:
+          type: object
+          required: [points, statement]
+          properties:
+            points: { type: array, items: { type: string } }
+            statement: { type: string }
+        removal:
+          type: object
+          required: [file, candidateId]
+          properties:
+            file: { type: string }
+            candidateId: { type: string }
+
+    FailMode:
+      type: object
+      required: [route, mode]
+      properties:
+        route: { type: string }
+        mode: { type: string, enum: [closed, open] }
+
+    FailModeUpdate:
+      type: object
+      required: [route, mode, signature]
+      properties:
+        route: { type: string }
+        mode: { type: string, enum: [closed, open] }
+        signature: { $ref: '#/components/schemas/GestureSignature' }

@@ -1,0 +1,22 @@
+name: ci
+on:
+  push:
+    branches: [main]
+  pull_request:
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run contract:lint
+      - name: Types générés à jour
+        run: npm run contract:types && git diff --exit-code lib/api/schema.d.ts
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm run contract:test
+      - run: npm run build
