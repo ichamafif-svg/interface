@@ -6,6 +6,7 @@ import { ago, clock, hhmmss, nf } from "@/lib/format";
 import { refHref } from "@/lib/refs";
 import { browserApi } from "@/lib/api/browser";
 import { RelayPanel } from "@/components/relay";
+import { openStream } from "@/lib/stream";
 
 const ACTOR: Record<string, [string, string, string]> = {
   agent: ["IA", "var(--agent)", "Agent"],
@@ -69,10 +70,9 @@ export function LiveBoard({ product, initial }: { product: string; initial: Live
 
   useEffect(() => {
     if (paused) return;
-    const es = new EventSource(`/api/v1/products/${encodeURIComponent(product)}/live/stream`);
-    const onEvent = (msg: MessageEvent<string>) => {
-      try {
-        const e = JSON.parse(msg.data) as LiveEvent;
+    return openStream(
+      `/products/${encodeURIComponent(product)}/live/stream`,
+      (e) => {
         setEvents((prev) => [{ ...e, fresh: true }, ...prev.filter((x) => x.id !== e.id).map((x) => ({ ...x, fresh: false }))].slice(0, 40));
         setSnap((s) => apply(s, e));
         if (e.type === "human.gesture" || e.type === "agent.question") {
@@ -80,16 +80,9 @@ export function LiveBoard({ product, initial }: { product: string; initial: Live
             if (data) setSnap((s) => ({ ...s, relay: data.relay }));
           });
         }
-      } catch {
-        /* événement illisible : ignoré, jamais inventé */
-      }
-    };
-    es.onopen = () => setConn("open");
-    es.onerror = () => setConn(es.readyState === EventSource.CLOSED ? "lost" : "connecting");
-    es.onmessage = onEvent;
-    const types = ["agent.step", "agent.message", "agent.question", "human.gesture", "precheck.progress", "judge.verdict", "release.progress", "probe.result", "fact.admitted", "refusal", "plan.step"];
-    types.forEach((t) => es.addEventListener(t, onEvent as EventListener));
-    return () => es.close();
+      },
+      setConn,
+    );
   }, [product, paused]);
 
   useEffect(() => {

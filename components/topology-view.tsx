@@ -8,6 +8,7 @@ import Link from "next/link";
 import type { LiveEvent, State, Topology, TopologyNode } from "@/lib/api/types";
 import { StateChip, Chip } from "@/components/ui";
 import { refHref } from "@/lib/refs";
+import { openStream } from "@/lib/stream";
 import { NeuralMap, NN_COLOR, type NeuralApi } from "@/components/neural-map";
 
 const STATE_COLOR = NN_COLOR;
@@ -39,20 +40,11 @@ export function TopologyView({ product, topology }: { product: string; topology:
   }, [effect, selNode, topology]);
 
   useEffect(() => {
-    const es = new EventSource(`/api/v1/products/${encodeURIComponent(product)}/live/stream`);
-    const on = (m: MessageEvent<string>) => {
-      try {
-        const e = JSON.parse(m.data) as LiveEvent;
-        if (!e.edge && !e.node) return;
-        net.current?.pulse({ edge: e.edge, node: e.node, color: TONE_COLOR[e.tone ?? "info"] ?? "#93c5fd" });
-        setFeed((f) => [e, ...f].slice(0, 5));
-      } catch {
-        /* ignoré */
-      }
-    };
-    es.onmessage = on;
-    ["agent.step", "agent.question", "human.gesture", "precheck.progress", "judge.verdict", "release.progress", "probe.result", "fact.admitted", "refusal"].forEach((t) => es.addEventListener(t, on as EventListener));
-    return () => es.close();
+    return openStream(`/products/${encodeURIComponent(product)}/live/stream`, (e) => {
+      if (!e.edge && !e.node) return;
+      net.current?.pulse({ edge: e.edge, node: e.node, color: TONE_COLOR[e.tone ?? "info"] ?? "#93c5fd" });
+      setFeed((f) => [e, ...f].slice(0, 5));
+    });
   }, [product]);
 
   const node = selNode ? nodeById[selNode] : null;

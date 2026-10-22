@@ -3,6 +3,12 @@ import { MainNav } from "@/components/nav";
 import { Logo } from "@/components/ui";
 import Link from "next/link";
 import { Toaster } from "@/components/toaster";
+import { DEMO_STATIC } from "@/lib/demo";
+
+/** Pré-rendu seulement pour la démo statique ; sinon tout est dynamique. */
+export async function generateStaticParams() {
+  return DEMO_STATIC ? [{ product: "lumen" }] : [];
+}
 
 export const dynamic = "force-dynamic";
 

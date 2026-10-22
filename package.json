@@ -12,7 +12,8 @@
     "contract:lint": "redocly lint contract/openapi.yaml",
     "contract:types": "openapi-typescript contract/openapi.yaml -o lib/api/schema.d.ts",
     "contract:test": "vitest run",
-    "contract:check": "node scripts/contract-check.mjs"
+    "contract:check": "node scripts/contract-check.mjs",
+    "build:demo": "node scripts/build-demo.mjs"
   },
   "dependencies": {
     "next": "15.5.28",

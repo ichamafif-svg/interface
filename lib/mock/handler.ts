@@ -334,7 +334,7 @@ on("PUT", "/products/{product}/routes/fail-mode", ({ params, body }) => {
 on("POST", "/auth/gesture-challenge", ({ body }) => {
   if (!(body as { purpose?: string } | null)?.purpose) return problem(422, "Geste visé requis");
   const bytes = crypto.getRandomValues(new Uint8Array(32));
-  const challenge = Buffer.from(bytes).toString("base64url");
+  const challenge = btoa(String.fromCharCode(...bytes)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
   return json({ challenge, rpId: "standard.demo.invalid", expiresAt: new Date(Date.now() + 120_000).toISOString(), allowCredentials: [] });
 });
 
