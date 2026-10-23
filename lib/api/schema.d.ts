@@ -852,6 +852,61 @@ export interface components {
             nodes: components["schemas"]["TopologyNode"][];
             edges: components["schemas"]["TopologyEdge"][];
             guarantees: components["schemas"]["GuaranteeEffect"][];
+            /** @description Projection pour l'équipe produit : seulement ses clients, services, données et tiers.
+             *     Les composants Standard n'y sont pas des nœuds : ils apparaissent comme points de contrôle sur les liens.
+             *      */
+            productView: {
+                nodes: {
+                    /** @description TopologyNode.id */
+                    id: string;
+                    /** @enum {string} */
+                    column: "actor" | "service" | "data" | "outside";
+                    /** @description Libellé simple du type, ex. Base de données */
+                    role?: string;
+                    /** @description Position verticale conseillée dans la colonne (0 = en haut, négatif autorisé) */
+                    row?: number;
+                }[];
+                links: components["schemas"]["ProductLink"][];
+            };
+            journeys: components["schemas"]["Journey"][];
+        };
+        ProductLink: {
+            id: string;
+            from: string;
+            to: string;
+            /** @enum {string} */
+            kind: "request" | "data" | "egress" | "bypass";
+            label?: string;
+            /** @description Le chemin est refusé par Standard (et c'est voulu) */
+            blocked?: boolean;
+            state: components["schemas"]["State"];
+            /** @description Arêtes de la topologie regroupées par ce lien (pour LiveEvent.edge) */
+            edgeIds: string[];
+            checkpoints: components["schemas"]["Checkpoint"][];
+        };
+        /** @description Ce que Standard fait sur ce chemin, dit simplement. */
+        Checkpoint: {
+            id: string;
+            /** @description Libellé court, ex. Entrée */
+            short: string;
+            detail: string;
+            state: components["schemas"]["State"];
+            /** @description Composant Standard qui agit (TopologyNode.id) */
+            standardNodeId?: string;
+            guaranteeId?: string;
+        };
+        /** @description Un parcours d'usage, lisible comme une phrase. */
+        Journey: {
+            id: string;
+            /** @description Verbe d'usage, ex. Modifier une playlist */
+            title: string;
+            who: string;
+            volume?: string;
+            /** @description Nœuds traversés dans l'ordre */
+            steps: string[];
+            linkIds: string[];
+            state: components["schemas"]["State"];
+            verdict: string;
         };
         TopologyNode: {
             id: string;

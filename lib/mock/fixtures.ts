@@ -802,6 +802,7 @@ export const topology: T.Schemas["Topology"] = {
   nodes: [
     n("users", "Utilisateurs · web", "client", "outside", "hors_standard", { detail: "Navigateurs, 2,4 M requêtes / 7 j" }),
     n("mobile", "App mobile v4.2", "client", "outside", "hors_standard", { detail: "Non gérée par Standard" }),
+    n("scripts", "Scripts internes", "client", "product", "non_couvert", { detail: "Export nocturne, backoffice, monitoring" }),
     n("probes", "Sondes · 3 points", "external", "standard", "qualifie", { detail: "Internet eu-west, VPC app, VPC data" }),
     n("envoy", "Entrée · Envoy", "entry", "standard", "qualifie", { detail: "Session, budget, corps, politique", metrics: [{ key: "rps", label: "Débit", value: 1800, unit: "req/s", display: "1,8k" }] }),
     n("admin", "admin.lumen.internal", "service", "product", "non_couvert", { detail: "Joignable sans passer par l'entrée", zoneId: "playlists" }),
@@ -822,7 +823,7 @@ export const topology: T.Schemas["Topology"] = {
   edges: [
     e("e-users-envoy", "users", "envoy", "request", "qualifie", ["g-rate", "g-ingress"]),
     e("e-mobile-envoy", "mobile", "envoy", "request", "observe", ["g-ingress"]),
-    e("e-users-admin", "users", "admin", "bypass", "non_couvert", ["g-ingress"], "contourne l'entrée"),
+    e("e-users-admin", "scripts", "admin", "bypass", "non_couvert", ["g-ingress"], "contourne l'entrée"),
     e("e-users-cdn", "users", "cdn", "request", "inconnu", ["g-playback"], "lecture audio"),
     e("e-probes-envoy", "probes", "envoy", "request", "qualifie", ["g-ingress", "g-rate"]),
     e("e-probes-cdn", "probes", "cdn", "request", "inconnu", ["g-playback"], "silencieuse"),
@@ -849,5 +850,62 @@ export const topology: T.Schemas["Topology"] = {
     { guaranteeId: "g-tenant", title: "Refus inter-tenant sur les playlists", state: "non_couvert", protects: { nodes: ["pg", "keycloak"], edges: ["e-api-pg", "e-envoy-keycloak"] }, ifBroken: "Un client peut lire les playlists d'un autre : fuite de données personnelles.", severity: "high" },
     { guaranteeId: "g-ingress", title: "Aucun contournement de l'entrée", state: "non_couvert", protects: { nodes: ["envoy", "admin"], edges: ["e-users-envoy", "e-mobile-envoy", "e-users-admin", "e-admin-pg"] }, ifBroken: "Session, budget et politique sont contournables par admin.lumen.internal.", severity: "high" },
     { guaranteeId: "g-restore", title: "Restauration Postgres < 30 min", state: "propose", protects: { nodes: ["pg", "s3"], edges: ["e-api-s3"] }, ifBroken: "Perte de données sans délai de reprise connu.", severity: "high" },
+  ],
+  productView: {
+    nodes: [
+      { id: "users", column: "actor", role: "Navigateur", row: 0 },
+      { id: "mobile", column: "actor", role: "Application", row: 1 },
+      { id: "scripts", column: "actor", role: "Outils de l'équipe", row: 2 },
+      { id: "api", column: "service", role: "Service principal", row: 0 },
+      { id: "worker", column: "service", role: "Tâche de fond", row: 1 },
+      { id: "admin", column: "service", role: "Interface interne", row: 2 },
+      { id: "pg", column: "data", role: "Base de données", row: 0.65 },
+      { id: "s3", column: "data", role: "Stockage de fichiers", row: 1.8 },
+      { id: "cdn", column: "outside", role: "Diffusion audio", row: -1 },
+      { id: "stripe", column: "outside", role: "Paiement", row: 0 },
+      { id: "segment", column: "outside", role: "Télémétrie", row: 1 },
+    ],
+    links: [
+      { id: "l-users-api", from: "users", to: "api", kind: "request", label: "1,8k req/s", state: "qualifie", edgeIds: ["e-users-envoy", "e-envoy-api", "e-envoy-keycloak", "e-probes-envoy"], checkpoints: [
+        { id: "c-entry", short: "Entrée", detail: "Session, budget d'appels, corps et politique vérifiés à l'entrée, prouvé par sonde", state: "qualifie", standardNodeId: "envoy", guaranteeId: "g-rate" },
+        { id: "c-token", short: "Jeton", detail: "Le jeton ne dit pas à quel client appartient l'utilisateur", state: "inconnu", standardNodeId: "keycloak", guaranteeId: "g-tenant" },
+      ] },
+      { id: "l-mobile-api", from: "mobile", to: "api", kind: "request", state: "observe", edgeIds: ["e-mobile-envoy"], checkpoints: [
+        { id: "c-entry-m", short: "Entrée", detail: "Même entrée contrôlée ; pas encore de sonde dédiée à l'app", state: "observe", standardNodeId: "envoy", guaranteeId: "g-ingress" },
+      ] },
+      { id: "l-scripts-admin", from: "scripts", to: "admin", kind: "bypass", label: "contourne l'entrée", state: "non_couvert", edgeIds: ["e-users-admin"], checkpoints: [
+        { id: "c-none-admin", short: "Aucun contrôle", detail: "admin.lumen.internal est joignable sans passer par l'entrée Standard", state: "non_couvert", guaranteeId: "g-ingress" },
+      ] },
+      { id: "l-users-cdn", from: "users", to: "cdn", kind: "request", label: "lecture audio", state: "inconnu", edgeIds: ["e-users-cdn", "e-probes-cdn"], checkpoints: [
+        { id: "c-cdn", short: "Sonde muette", detail: "Hors Standard, surveillé par sonde ; aucune réponse depuis 6 h", state: "inconnu", standardNodeId: "probes", guaranteeId: "g-playback" },
+      ] },
+      { id: "l-api-pg", from: "api", to: "pg", kind: "data", state: "non_couvert", edgeIds: ["e-api-pg", "e-api-cedar"], checkpoints: [
+        { id: "c-policy", short: "Politique", detail: "Qui peut lire ou modifier quoi : politique Cedar v4 en observation", state: "qualifie", standardNodeId: "cedar" },
+        { id: "c-tenant", short: "Isolation", detail: "Rien ne prouve qu'un client ne peut pas lire les données d'un autre", state: "non_couvert", guaranteeId: "g-tenant" },
+      ] },
+      { id: "l-admin-pg", from: "admin", to: "pg", kind: "data", state: "non_couvert", edgeIds: ["e-admin-pg"], checkpoints: [
+        { id: "c-none-adminpg", short: "Aucun contrôle", detail: "Accès direct à la base, hors politique", state: "non_couvert", guaranteeId: "g-ingress" },
+      ] },
+      { id: "l-worker-pg", from: "worker", to: "pg", kind: "data", state: "observe", edgeIds: ["e-worker-pg"], checkpoints: [] },
+      { id: "l-api-s3", from: "api", to: "s3", kind: "data", state: "observe", edgeIds: ["e-api-s3"], checkpoints: [
+        { id: "c-restore", short: "Sauvegarde", detail: "Restauration jamais exercée ; exercice planifié le 28 oct.", state: "propose", guaranteeId: "g-restore" },
+      ] },
+      { id: "l-api-stripe", from: "api", to: "stripe", kind: "egress", state: "qualifie", edgeIds: ["e-api-egress", "e-egress-stripe"], checkpoints: [
+        { id: "c-egress", short: "Sortie", detail: "L'API ne peut appeler que 4 destinations, prouvé par sonde de refus", state: "qualifie", standardNodeId: "egress", guaranteeId: "g-egress" },
+        { id: "c-secret", short: "Secret", detail: "La clé Stripe est encore dans le code, pas dans le coffre", state: "propose", standardNodeId: "openbao" },
+      ] },
+      { id: "l-api-segment", from: "api", to: "segment", kind: "egress", label: "bloqué", blocked: true, state: "qualifie", edgeIds: ["e-egress-segment"], checkpoints: [
+        { id: "c-egress-block", short: "Refusé", detail: "Destination hors loi : l'appel est refusé à la sortie, comme prévu", state: "qualifie", standardNodeId: "egress", guaranteeId: "g-egress" },
+      ] },
+    ],
+  },
+  journeys: [
+    { id: "j-listen", title: "Écouter un titre", who: "Abonné", volume: "≈ 40 000 lectures / h", steps: ["users", "cdn"], linkIds: ["l-users-cdn"], state: "inconnu", verdict: "Inconnu : la sonde du CDN ne répond plus depuis 6 h" },
+    { id: "j-edit", title: "Modifier une playlist", who: "Membre", volume: "1 204 modifications / 7 j", steps: ["users", "api", "pg"], linkIds: ["l-users-api", "l-api-pg"], state: "non_couvert", verdict: "Protégé à l'entrée et par la politique ; l'isolation entre clients n'est pas prouvée" },
+    { id: "j-pay", title: "Payer son abonnement", who: "Abonné", steps: ["users", "api", "stripe"], linkIds: ["l-users-api", "l-api-stripe"], state: "observe", verdict: "Sortie vers Stripe limitée et prouvée ; la clé Stripe reste à mettre au coffre" },
+    { id: "j-mobile", title: "Utiliser l'app mobile", who: "Abonné", steps: ["mobile", "api", "pg"], linkIds: ["l-mobile-api", "l-api-pg"], state: "non_couvert", verdict: "Même entrée que le web ; même trou d'isolation" },
+    { id: "j-import", title: "Importer des playlists", who: "Tâche de fond", steps: ["worker", "pg"], linkIds: ["l-worker-pg"], state: "observe", verdict: "Observé, aucune garantie posée" },
+    { id: "j-admin", title: "Accès admin interne", who: "Scripts de l'équipe", steps: ["scripts", "admin", "pg"], linkIds: ["l-scripts-admin", "l-admin-pg"], state: "non_couvert", verdict: "Contourne l'entrée : aucun contrôle Standard sur ce chemin" },
+    { id: "j-telemetry", title: "Envoyer de la télémétrie", who: "API", steps: ["api", "segment"], linkIds: ["l-api-segment"], state: "qualifie", verdict: "Refusé à la sortie, comme prévu" },
   ],
 };

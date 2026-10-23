@@ -1021,12 +1021,71 @@ components:
 
     Topology:
       type: object
-      required: [release, nodes, edges, guarantees]
+      required: [release, nodes, edges, guarantees, productView, journeys]
       properties:
         release: { type: string }
         nodes: { type: array, items: { $ref: '#/components/schemas/TopologyNode' } }
         edges: { type: array, items: { $ref: '#/components/schemas/TopologyEdge' } }
         guarantees: { type: array, items: { $ref: '#/components/schemas/GuaranteeEffect' } }
+        productView:
+          type: object
+          description: |
+            Projection pour l'équipe produit : seulement ses clients, services, données et tiers.
+            Les composants Standard n'y sont pas des nœuds : ils apparaissent comme points de contrôle sur les liens.
+          required: [nodes, links]
+          properties:
+            nodes:
+              type: array
+              items:
+                type: object
+                required: [id, column]
+                properties:
+                  id: { type: string, description: TopologyNode.id }
+                  column: { type: string, enum: [actor, service, data, outside] }
+                  role: { type: string, description: "Libellé simple du type, ex. Base de données" }
+                  row: { type: number, description: "Position verticale conseillée dans la colonne (0 = en haut, négatif autorisé)" }
+            links: { type: array, items: { $ref: '#/components/schemas/ProductLink' } }
+        journeys: { type: array, items: { $ref: '#/components/schemas/Journey' } }
+
+    ProductLink:
+      type: object
+      required: [id, from, to, kind, state, checkpoints, edgeIds]
+      properties:
+        id: { type: string }
+        from: { type: string }
+        to: { type: string }
+        kind: { type: string, enum: [request, data, egress, bypass] }
+        label: { type: string }
+        blocked: { type: boolean, description: Le chemin est refusé par Standard (et c'est voulu) }
+        state: { $ref: '#/components/schemas/State' }
+        edgeIds: { type: array, items: { type: string }, description: Arêtes de la topologie regroupées par ce lien (pour LiveEvent.edge) }
+        checkpoints: { type: array, items: { $ref: '#/components/schemas/Checkpoint' } }
+
+    Checkpoint:
+      type: object
+      description: Ce que Standard fait sur ce chemin, dit simplement.
+      required: [id, short, detail, state]
+      properties:
+        id: { type: string }
+        short: { type: string, maxLength: 16, description: "Libellé court, ex. Entrée" }
+        detail: { type: string }
+        state: { $ref: '#/components/schemas/State' }
+        standardNodeId: { type: string, description: Composant Standard qui agit (TopologyNode.id) }
+        guaranteeId: { type: string }
+
+    Journey:
+      type: object
+      description: Un parcours d'usage, lisible comme une phrase.
+      required: [id, title, who, steps, linkIds, state, verdict]
+      properties:
+        id: { type: string }
+        title: { type: string, description: "Verbe d'usage, ex. Modifier une playlist" }
+        who: { type: string }
+        volume: { type: string }
+        steps: { type: array, items: { type: string }, description: Nœuds traversés dans l'ordre }
+        linkIds: { type: array, items: { type: string } }
+        state: { $ref: '#/components/schemas/State' }
+        verdict: { type: string }
 
     TopologyNode:
       type: object
